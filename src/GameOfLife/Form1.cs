@@ -1,19 +1,18 @@
 namespace GameOfLife
 {
-    public partial class Form1 : Form
+    public partial class Life : Form
     {
         private Simulation simulation;
 
-        public Form1()
+        public Life()
         {
             this.InitializeComponent();
-            this.DoubleBuffered = true;
         }
 
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            this.simulation = new(this.canvas.Width / 4, this.canvas.Height / 4, 5);
+            this.simulation = new(this.canvas.Width / 8, this.canvas.Height / 8, 5);
             this.simulation.SimulationChanged += this.Simulation_SimulationChanged;
         }
 

@@ -1,6 +1,6 @@
 ﻿namespace GameOfLife
 {
-    partial class Form1
+    partial class Life
     {
         /// <summary>
         ///  Required designer variable.
@@ -37,19 +37,21 @@
             this.canvas.Dock = System.Windows.Forms.DockStyle.Fill;
             this.canvas.Location = new System.Drawing.Point(0, 0);
             this.canvas.Name = "canvas";
-            this.canvas.Size = new System.Drawing.Size(834, 640);
+            this.canvas.Size = new System.Drawing.Size(1904, 1041);
             this.canvas.TabIndex = 0;
             this.canvas.TabStop = false;
             this.canvas.Paint += new System.Windows.Forms.PaintEventHandler(this.Canvas_Paint);
             // 
-            // Form1
+            // Life
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.Black;
-            this.ClientSize = new System.Drawing.Size(834, 640);
+            this.ClientSize = new System.Drawing.Size(1904, 1041);
             this.Controls.Add(this.canvas);
-            this.Name = "Form1";
+            this.DoubleBuffered = true;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            this.Name = "Life";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "Life";
             ((System.ComponentModel.ISupportInitialize)(this.canvas)).EndInit();

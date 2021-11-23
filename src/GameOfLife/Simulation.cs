@@ -43,8 +43,9 @@
 
         private async void RunAsync()
         {
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
+                await Task.Delay(50);
                 this.ApplyRules();
                 this.RenderBitmap();
                 ++this.Generations;
@@ -124,7 +125,7 @@
         public void Render(Graphics graphics)
         {
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-            graphics.DrawImage(this.image, 0, 0, this.width * 4, this.height * 4);
+            graphics.DrawImage(this.image, 0, 0, this.width * 8, this.height * 8);
 
             this.RunAsync();
         }
@@ -133,8 +134,8 @@
         {
             return state switch
             {
-                PixelState.Dying => Color.Gray,
-                PixelState.Alive => Color.White,
+                PixelState.Dying => Color.ForestGreen,
+                PixelState.Alive => Color.Lime,
                 _ => Color.Black,
             };
         }
