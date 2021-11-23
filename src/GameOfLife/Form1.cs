@@ -13,7 +13,7 @@ namespace GameOfLife
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            this.simulation = new(this.canvas.Width / 4, this.canvas.Height / 4, 8);
+            this.simulation = new(this.canvas.Width / 4, this.canvas.Height / 4, 5);
             this.simulation.SimulationChanged += this.Simulation_SimulationChanged;
         }
 

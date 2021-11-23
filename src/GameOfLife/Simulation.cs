@@ -46,10 +46,22 @@
             await Task.Run(() =>
             {
                 this.ApplyRules();
+                this.RenderBitmap();
                 ++this.Generations;
             });
 
             this.SimulationChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void RenderBitmap()
+        {
+            for (var x = 0; x < this.width; ++x)
+            {
+                for (var y = 0; y < this.height; ++y)
+                {
+                    this.image.SetPixel(x, y, GetColor(this.cells[this.primary, x, y]));
+                }
+            }
         }
 
         private void ApplyRules()
@@ -71,7 +83,7 @@
                     this.cells[successor, x, y] = this.cells[this.primary, x, y] switch
                     {
                         PixelState.Dead => neighbors == 3 ? PixelState.Alive : PixelState.Dead,
-                        _ => neighbors == 2 || neighbors == 3 || rng.NextDouble() < 0.001 ? PixelState.Alive : PixelState.Dying,
+                        _ => neighbors == 2 || neighbors == 3 || rng.NextDouble() < 0.0005 ? PixelState.Alive : PixelState.Dying,
                     };
                 }
             }
@@ -111,14 +123,6 @@
 
         public void Render(Graphics graphics)
         {
-            for (var x = 0; x < this.width; ++x)
-            {
-                for (var y = 0; y < this.height; ++y)
-                {
-                    this.image.SetPixel(x, y, GetColor(this.cells[this.primary, x, y]));
-                }
-            }
-
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
             graphics.DrawImage(this.image, 0, 0, this.width * 4, this.height * 4);
 
@@ -129,7 +133,7 @@
         {
             return state switch
             {
-                PixelState.Dying => Color.Silver,
+                PixelState.Dying => Color.Gray,
                 PixelState.Alive => Color.White,
                 _ => Color.Black,
             };
