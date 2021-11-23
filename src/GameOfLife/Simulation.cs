@@ -89,8 +89,8 @@ namespace GameOfLife
                     // the RNG creates a chance that a cell will not die. this causes oscillators to sometimes spawn into puffers and gliders
                     this.cells[successor, x, y] = this.cells[this.primary, x, y] switch
                     {
-                        0 => neighbors == 3 ? (byte)0xFF : (byte)0x00,
-                        _ => neighbors == 2 || neighbors == 3 || rng.NextDouble() < 0.0005 ? (byte)(this.cells[this.primary, x, y] - 1) : (byte)0x00,
+                        0 => neighbors == 3 || (neighbors >= 2 && rng.NextDouble() < 0.0005) ? (byte)0xFF : (byte)0x00,
+                        _ => neighbors == 2 || neighbors == 3 || (neighbors >= 2 && rng.NextDouble() < 0.0005) ? (byte)(this.cells[this.primary, x, y] - 1) : (byte)0x00,
                     };
 
                     if (this.cells[successor, x, y] < 0)
