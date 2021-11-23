@@ -1,30 +1,49 @@
-﻿namespace GameOfLife
-{
-    internal enum PixelState
-    {
-        Dead = 0,
-        Alive = 1,
-        Dying = 2,
-    }
+﻿using System.Collections.Concurrent;
 
+namespace GameOfLife
+{
     internal class Simulation
     {
-        public long Generations { get; private set; } = 0;
-        public event EventHandler<EventArgs>? SimulationChanged;
-        private readonly Bitmap image;
+        // https://en.wikipedia.org/wiki/Conway's_Game_of_Life
 
-        private readonly PixelState[,,] cells;
+        public long Generations { get; private set; } = 0;
+        public event EventHandler<EventArgs>? FrameReady;
+
+        private readonly ConcurrentQueue<Bitmap> bitmaps = new();
+        private readonly Bitmap image;
+        private readonly byte[,,] cells;
         private int primary = 0;
         private readonly int width;
         private readonly int height;
 
         public Simulation(int width, int height, int chance)
         {
-            this.cells = new PixelState[2, width, height];
+            this.cells = new byte[2, width, height];
             this.image = new Bitmap(width, height);
             this.width = width;
             this.height = height;
             this.Randomize(chance);
+        }
+
+        public async void RunAsync(CancellationToken cancellationToken)
+        {
+            await Task.Run(async () =>
+            {
+                while (true)
+                {
+                    await Task.Delay(25);
+                    this.ApplyRules();
+                    this.RenderBitmap();
+                    this.bitmaps.Enqueue((Bitmap)this.image.Clone());
+                    ++this.Generations;
+                    this.FrameReady?.Invoke(this, EventArgs.Empty);
+                }
+            }, cancellationToken);
+        }
+
+        public bool TryGetNextFrame(out Bitmap? frame)
+        {
+            return this.bitmaps.TryDequeue(out frame);
         }
 
         private void Randomize(int chance)
@@ -35,23 +54,10 @@
                 for (var y = 0; y < this.height; ++y)
                 {
                     this.cells[this.primary, x, y] = rng.Next(20) <= 20 * (chance / 100.0)
-                        ? PixelState.Alive
-                        : PixelState.Dead;
+                        ? (byte)0xFF
+                        : (byte)0x00;
                 }
             }
-        }
-
-        private async void RunAsync()
-        {
-            await Task.Run(async () =>
-            {
-                await Task.Delay(50);
-                this.ApplyRules();
-                this.RenderBitmap();
-                ++this.Generations;
-            });
-
-            this.SimulationChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private void RenderBitmap()
@@ -65,10 +71,14 @@
             }
         }
 
+        private static Color GetColor(byte age)
+        {
+            return Color.FromArgb(age > 0 ? 255 - age : 0, age, 0);
+        }
+
         private void ApplyRules()
         {
             var successor = this.primary ^ 1;
-            // https://en.wikipedia.org/wiki/Conway's_Game_of_Life
             var rng = new Random(DateTime.UtcNow.Millisecond);
             for (var x = 0; x < this.width; ++x)
             {
@@ -76,16 +86,17 @@
                 {
                     var neighbors = this.CountLivingNeighbors(x, y);
 
-                    this.cells[this.primary, x, y] = this.cells[this.primary, x, y] == PixelState.Dying
-                        ? PixelState.Dead
-                        : this.cells[this.primary, x, y];
-
                     // the RNG creates a chance that a cell will not die. this causes oscillators to sometimes spawn into puffers and gliders
                     this.cells[successor, x, y] = this.cells[this.primary, x, y] switch
                     {
-                        PixelState.Dead => neighbors == 3 ? PixelState.Alive : PixelState.Dead,
-                        _ => neighbors == 2 || neighbors == 3 || rng.NextDouble() < 0.0005 ? PixelState.Alive : PixelState.Dying,
+                        0 => neighbors == 3 || (neighbors >= 2 && rng.NextDouble() < 0.0005) ? (byte)0xFF : (byte)0x00,
+                        _ => neighbors == 2 || neighbors == 3 || (neighbors >= 2 && rng.NextDouble() < 0.0005) ? (byte)(this.cells[this.primary, x, y] - 1) : (byte)0x00,
                     };
+
+                    if (this.cells[successor, x, y] < 0)
+                    {
+                        this.cells[successor, x, y] = 0x00;
+                    }
                 }
             }
 
@@ -94,50 +105,30 @@
 
         private int CountLivingNeighbors(int x, int y)
         {
-            var xmin = x - 1;
-            xmin = xmin != -1 ? xmin : this.width - 1; // wrap right
-
-            var xmax = x + 1;
-            xmax = xmax != this.width ? xmax : 0; // wrap left
-
-            var ymin = y - 1;
-            ymin = ymin != -1 ? ymin : this.height - 1; // wrap top
-
-            var ymax = y + 1;
-            ymax = ymax != this.height ? ymax : 0; // wrap bottom
+            var xmin = x > 0 ? x - 1 : this.width - 1; // wrap right
+            var xmax = x < this.width - 1 ? x + 1 : 0; // wrap left
+            var ymin = y > 0 ? y - 1 : this.height - 1;  // wrap top
+            var ymax = y < this.height - 1 ? y + 1 : 0; // wrap bottom
 
             var count = 0;
 
-            count += this.cells[this.primary, xmin, ymin] == PixelState.Alive ? 1 : 0;
-            count += this.cells[this.primary, xmin, y] == PixelState.Alive ? 1 : 0;
-            count += this.cells[this.primary, xmin, ymax] == PixelState.Alive ? 1 : 0;
+            // value > zero is alive
 
-            count += this.cells[this.primary, xmax, ymin] == PixelState.Alive ? 1 : 0;
-            count += this.cells[this.primary, xmax, y] == PixelState.Alive ? 1 : 0;
-            count += this.cells[this.primary, xmax, ymax] == PixelState.Alive ? 1 : 0;
+            // left column
+            count += this.cells[this.primary, xmin, ymin] > 0 ? 1 : 0;
+            count += this.cells[this.primary, xmin, y] > 0 ? 1 : 0;
+            count += this.cells[this.primary, xmin, ymax] > 0 ? 1 : 0;
 
-            count += this.cells[this.primary, x, ymin] == PixelState.Alive ? 1 : 0;
-            count += this.cells[this.primary, x, ymax] == PixelState.Alive ? 1 : 0;
+            // right colum
+            count += this.cells[this.primary, xmax, ymin] > 0 ? 1 : 0;
+            count += this.cells[this.primary, xmax, y] > 0 ? 1 : 0;
+            count += this.cells[this.primary, xmax, ymax] > 0 ? 1 : 0;
+
+            // center column (excluding current pixel)
+            count += this.cells[this.primary, x, ymin] > 0 ? 1 : 0;
+            count += this.cells[this.primary, x, ymax] > 0 ? 1 : 0;
 
             return count;
-        }
-
-        public void Render(Graphics graphics)
-        {
-            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-            graphics.DrawImage(this.image, 0, 0, this.width * 8, this.height * 8);
-
-            this.RunAsync();
-        }
-
-        private static Color GetColor(PixelState state)
-        {
-            return state switch
-            {
-                PixelState.Dying => Color.ForestGreen,
-                PixelState.Alive => Color.Lime,
-                _ => Color.Black,
-            };
         }
     }
 }
