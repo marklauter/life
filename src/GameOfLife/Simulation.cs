@@ -22,7 +22,7 @@ namespace GameOfLife
             this.image = new Bitmap(width, height);
             this.width = width;
             this.height = height;
-            this.Randomize(chance);
+            this.LetThereBeLight(chance);
         }
 
         public async void RunAsync(CancellationToken cancellationToken)
@@ -46,7 +46,7 @@ namespace GameOfLife
             return this.bitmaps.TryDequeue(out frame);
         }
 
-        private void Randomize(int chance)
+        private void LetThereBeLight(int chance)
         {
             var rng = new Random(DateTime.UtcNow.Millisecond);
             for (var x = 0; x < this.width; ++x)
