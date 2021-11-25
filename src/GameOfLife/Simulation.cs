@@ -40,7 +40,7 @@ namespace GameOfLife
         public void DrawFrame(Graphics graphics)
         {
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-            graphics.DrawImage(this.frame, 0, 0, this.width, this.height);
+            graphics.DrawImage(this.frame, 0, 0, this.width * 4, this.height * 4);
             this.GenerateFrameAsync();
         }
 
@@ -95,7 +95,6 @@ namespace GameOfLife
                 {
                     var currentPixel = y * this.width + x;
                     var neighbors = this.CountLivingNeighbors(x, y);
-                    var alive = this.cells[this.source][currentPixel] != 0x00;
                     var cell = this.cells[this.source][currentPixel];
                     // SR 2
                     // 0000 0000 1 
@@ -147,17 +146,7 @@ namespace GameOfLife
                     var nextValue = (byte)(
                         (((((neighbors >> 2) ^ 0x01) << 1) & neighbors) >> 1)
                         * ((neighbors & 0x01) | (cell & 0x01))
-                        * 0xFF); // answer is either FF or 00
-
-
-                    //var nextValue = (alive && neighbors == 2) || neighbors == 3
-                    //    ? (byte)0xFF
-                    //    : (byte)0x00;
-
-                    //if (shiftedValue != nextValue)
-                    //{
-                    //    throw new InvalidOperationException();
-                    //}
+                        * 0xFF); 
 
                     this.cells[target][currentPixel] = nextValue;
                 }

@@ -8,7 +8,7 @@ namespace GameOfLife
         {
             this.InitializeComponent();
             var graphics = this.canvas.CreateGraphics();
-            this.simulation = new(this.canvas.Width, this.canvas.Height, 10, graphics);
+            this.simulation = new(this.canvas.Width / 4, this.canvas.Height / 4, 5, graphics);
             this.simulation.FrameReady += this.Simulation_FrameReady;
         }
 
