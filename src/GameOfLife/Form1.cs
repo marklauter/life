@@ -7,13 +7,15 @@ namespace GameOfLife
         public Life()
         {
             this.InitializeComponent();
-            this.simulation = new(this.canvas.Width / 2, this.canvas.Height / 2, 5);
+            var graphics = this.canvas.CreateGraphics();
+            this.simulation = new(this.canvas.Width, this.canvas.Height, 10, graphics);
             this.simulation.FrameReady += this.Simulation_FrameReady;
         }
 
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            this.simulation.GenerateFrameAsync();
         }
 
         private void Simulation_FrameReady(object? sender, EventArgs e)
