@@ -15,9 +15,8 @@ namespace GameOfLife
         private int source = 0;
         private readonly int width;
         private readonly int height;
-        private readonly Graphics graphics;
 
-        public Simulation(int width, int height, int chance, Graphics graphics)
+        public Simulation(int width, int height)
         {
             this.cells = new byte[2][];
             this.cells[0] = new byte[width * height];
@@ -26,13 +25,14 @@ namespace GameOfLife
             this.frameBounds = new Rectangle(0, 0, width, height);
             this.width = width;
             this.height = height;
-            this.graphics = graphics;
-            this.LetThereBeLight(chance);
         }
 
         public void GenerateFrameAsync()
         {
-            this.WriteFrame();
+            var target = this.source ^ 1;
+            this.ApplyRules(target);
+            this.WriteFrame(target);
+            this.source = target;
             ++this.Generations;
             this.FrameReady?.Invoke(this, EventArgs.Empty);
         }
@@ -44,58 +44,55 @@ namespace GameOfLife
             this.GenerateFrameAsync();
         }
 
-        private void LetThereBeLight(int chance)
+        public void LetThereBeLight(Image image)
+        {
+            var depth = Bitmap.GetPixelFormatSize(System.Drawing.Imaging.PixelFormat.Format24bppRgb) / 8;
+
+            using var resizedImage = new Bitmap(this.width, this.height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            using var graphics = Graphics.FromImage(resizedImage);
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            graphics.DrawImage(image, 0, 0, this.width, this.height);
+            
+            var bitmap = resizedImage.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.ReadOnly, resizedImage.PixelFormat);
+            var rgb = new byte[bitmap.Stride * this.height];
+            Marshal.Copy(bitmap.Scan0, rgb, 0, rgb.Length);
+            
+            var targetCells = this.cells[this.source];
+
+            var cell = 0;
+            for (var i = 0; i < rgb.Length; i += depth)
+            {
+                var avg = (rgb[i] + rgb[i + 1] + rgb[i + 2]) / 3;
+                var value = (byte)(avg >= 175 ? 0xFF : 0x00);
+                targetCells[cell++] = value;
+            }
+
+            resizedImage.UnlockBits(bitmap);
+        }
+
+        public void LetThereBeLight(int chance)
         {
             var rng = new Random(DateTime.UtcNow.Millisecond);
-            var bitmap = this.frame.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.WriteOnly, this.frame.PixelFormat);
-            try
-            {
-                var value = (byte)0xFF;
-                for (var x = 0; x < this.width; ++x)
-                {
-                    for (var y = 0; y < this.height; ++y)
-                    {
-                        value = (rng.NextDouble() * 100 <= chance + (value == 0xFF ? chance * 0.50 : 0))
-                            ? (byte)0xFF
-                            : (byte)0x00;
-                        this.cells[this.source][y * this.width + x] = value;
-                    }
-                }
-
-                Marshal.Copy(this.cells[this.source], 0, bitmap.Scan0, this.cells[this.source].Length);
-            }
-            finally
-            {
-                this.frame.UnlockBits(bitmap);
-            }
-        }
-
-        private void WriteFrame()
-        {
-            var target = this.source ^ 1;
-            var bitmap = this.frame.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.WriteOnly, this.frame.PixelFormat);
-            try
-            {
-                this.ApplyRules(target);
-                Marshal.Copy(this.cells[target], 0, bitmap.Scan0, this.cells[target].Length);
-            }
-            finally
-            {
-                this.frame.UnlockBits(bitmap);
-            }
-
-            this.source = target;
-        }
-
-        private void ApplyRules(int target)
-        {
             for (var x = 0; x < this.width; ++x)
             {
                 for (var y = 0; y < this.height; ++y)
                 {
-                    var currentPixel = y * this.width + x;
+                    this.cells[this.source][y * this.width + x] = rng.NextDouble() * 100 <= chance
+                        ? (byte)0xFF
+                        : (byte)0x00;
+                }
+            }
+        }
+
+        private void ApplyRules(int target)
+        {
+            var sourceCells = this.cells[this.source];
+            var targetCells = this.cells[target];
+            for (var x = 0; x < this.width; ++x)
+            {
+                for (var y = 0; y < this.height; ++y)
+                {
                     var neighbors = this.CountLivingNeighbors(x, y);
-                    var cell = this.cells[this.source][currentPixel];
                     // SR 2
                     // 0000 0000 1 
                     // 0000 0000 2 
@@ -142,13 +139,13 @@ namespace GameOfLife
                     // 0000 0000 7
                     // 0000 0000 8
 
-                    // when neighbors is 2 then final multiplication zeros the value unless cell was alive, when it's 3 then it keeps the value
-                    var nextValue = (byte)(
-                        (((((neighbors >> 2) ^ 0x01) << 1) & neighbors) >> 1)
-                        * ((neighbors & 0x01) | (cell & 0x01))
-                        * 0xFF); 
+                    var currentPixel = y * this.width + x;
 
-                    this.cells[target][currentPixel] = nextValue;
+                    // this is all the rules of life in 1 line of code
+                    targetCells[currentPixel] = (byte)(
+                        (((((neighbors >> 2) ^ 0x01) << 1) & neighbors) >> 1)
+                        * ((neighbors & 0x01) | (sourceCells[currentPixel] & 0x01))
+                        * 0xFF);
                 }
             }
         }
@@ -182,6 +179,14 @@ namespace GameOfLife
             count /= 0xFF;
 
             return count;
+        }
+
+        private void WriteFrame(int target)
+        {
+            var targetCells = this.cells[target];
+            var bitmap = this.frame.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.WriteOnly, this.frame.PixelFormat);
+            Marshal.Copy(targetCells, 0, bitmap.Scan0, targetCells.Length);
+            this.frame.UnlockBits(bitmap);
         }
     }
 }
