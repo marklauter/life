@@ -16,7 +16,7 @@ namespace GameOfLife
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            this.simulation.LetThereBeLight(10);
+            this.simulation.LetThereBeLight(8);
             //this.simulation.LetThereBeLight(Bitmap.FromFile("cortana.jpg"));
             this.simulation.GenerateFrameAsync();
         }
