@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Runtime.InteropServices;
 
 namespace GameOfLife
 {
@@ -9,126 +9,184 @@ namespace GameOfLife
         public long Generations { get; private set; } = 0;
         public event EventHandler<EventArgs>? FrameReady;
 
-        private readonly ConcurrentQueue<Bitmap> bitmaps = new();
-        private readonly Bitmap image;
-        private readonly byte[,,] cells;
-        private int primary = 0;
+        private readonly Bitmap frame;
+        private readonly Rectangle frameBounds;
+        private readonly byte[][] cells;
+        private int source = 0;
         private readonly int width;
         private readonly int height;
 
-        public Simulation(int width, int height, int chance)
+        public Simulation(int width, int height)
         {
-            this.cells = new byte[2, width, height];
-            this.image = new Bitmap(width, height);
+            this.cells = new byte[2][];
+            this.cells[0] = new byte[width * height];
+            this.cells[1] = new byte[width * height];
+            this.frame = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format8bppIndexed);
+            this.frameBounds = new Rectangle(0, 0, width, height);
             this.width = width;
             this.height = height;
-            this.Randomize(chance);
         }
 
-        public async void RunAsync(CancellationToken cancellationToken)
+        public void GenerateFrameAsync()
         {
-            await Task.Run(async () =>
+            var target = this.source ^ 1;
+            this.ApplyRules(target);
+            this.WriteFrame(target);
+            this.source = target;
+            ++this.Generations;
+            this.FrameReady?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void DrawFrame(Graphics graphics)
+        {
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+            graphics.DrawImage(this.frame, 0, 0, this.width * 4, this.height * 4);
+            this.GenerateFrameAsync();
+        }
+
+        public void LetThereBeLight(Image image)
+        {
+            var depth = Bitmap.GetPixelFormatSize(System.Drawing.Imaging.PixelFormat.Format24bppRgb) / 8;
+
+            using var resizedImage = new Bitmap(this.width, this.height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            using var graphics = Graphics.FromImage(resizedImage);
+            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            graphics.DrawImage(image, 0, 0, this.width, this.height);
+            
+            var bitmap = resizedImage.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.ReadOnly, resizedImage.PixelFormat);
+            var rgb = new byte[bitmap.Stride * this.height];
+            Marshal.Copy(bitmap.Scan0, rgb, 0, rgb.Length);
+            
+            var targetCells = this.cells[this.source];
+
+            var cell = 0;
+            for (var i = 0; i < rgb.Length; i += depth)
             {
-                while (true)
-                {
-                    await Task.Delay(25);
-                    this.ApplyRules();
-                    this.RenderBitmap();
-                    this.bitmaps.Enqueue((Bitmap)this.image.Clone());
-                    ++this.Generations;
-                    this.FrameReady?.Invoke(this, EventArgs.Empty);
-                }
-            }, cancellationToken);
+                var avg = (rgb[i] + rgb[i + 1] + rgb[i + 2]) / 3;
+                var value = (byte)(avg >= 175 ? 0xFF : 0x00);
+                targetCells[cell++] = value;
+            }
+
+            resizedImage.UnlockBits(bitmap);
         }
 
-        public bool TryGetNextFrame(out Bitmap? frame)
-        {
-            return this.bitmaps.TryDequeue(out frame);
-        }
-
-        private void Randomize(int chance)
+        public void LetThereBeLight(int chance)
         {
             var rng = new Random(DateTime.UtcNow.Millisecond);
             for (var x = 0; x < this.width; ++x)
             {
                 for (var y = 0; y < this.height; ++y)
                 {
-                    this.cells[this.primary, x, y] = rng.Next(20) <= 20 * (chance / 100.0)
+                    this.cells[this.source][y * this.width + x] = rng.NextDouble() * 100 <= chance
                         ? (byte)0xFF
                         : (byte)0x00;
                 }
             }
         }
 
-        private void RenderBitmap()
+        private void ApplyRules(int target)
         {
-            for (var x = 0; x < this.width; ++x)
-            {
-                for (var y = 0; y < this.height; ++y)
-                {
-                    this.image.SetPixel(x, y, GetColor(this.cells[this.primary, x, y]));
-                }
-            }
-        }
-
-        private static Color GetColor(byte age)
-        {
-            return Color.FromArgb(age > 0 ? 255 - age : 0, age, 0);
-        }
-
-        private void ApplyRules()
-        {
-            var successor = this.primary ^ 1;
-            var rng = new Random(DateTime.UtcNow.Millisecond);
+            var sourceCells = this.cells[this.source];
+            var targetCells = this.cells[target];
             for (var x = 0; x < this.width; ++x)
             {
                 for (var y = 0; y < this.height; ++y)
                 {
                     var neighbors = this.CountLivingNeighbors(x, y);
+                    // SR 2
+                    // 0000 0000 1 
+                    // 0000 0000 2 
+                    // 0000 0000 3
+                    // 0000 0001 4
+                    // 0000 0001 5
+                    // 0000 0001 6
+                    // 0000 0001 7
+                    // 0000 0010 8
+                    // XOR 0x01
+                    // 0000 0001 1 
+                    // 0000 0001 2 
+                    // 0000 0001 3
+                    // 0000 0000 4
+                    // 0000 0000 5
+                    // 0000 0000 6
+                    // 0000 0000 7
+                    // 0000 0011 8
+                    // SL 1
+                    // 0000 0010 1 
+                    // 0000 0010 2 
+                    // 0000 0010 3
+                    // 0000 0000 4
+                    // 0000 0000 5
+                    // 0000 0000 6
+                    // 0000 0000 7
+                    // 0000 0110 8
+                    // AND self
+                    // 0000 0000 1 
+                    // 0000 0010 2 
+                    // 0000 0010 3
+                    // 0000 0000 4
+                    // 0000 0000 5
+                    // 0000 0000 6
+                    // 0000 0000 7
+                    // 0000 0000 8
+                    // SR 1
+                    // 0000 0000 1 
+                    // 0000 0001 2 
+                    // 0000 0001 3
+                    // 0000 0000 4
+                    // 0000 0000 5
+                    // 0000 0000 6
+                    // 0000 0000 7
+                    // 0000 0000 8
 
-                    // the RNG creates a chance that a cell will not die. this causes oscillators to sometimes spawn into puffers and gliders
-                    this.cells[successor, x, y] = this.cells[this.primary, x, y] switch
-                    {
-                        0 => neighbors == 3 || (neighbors >= 2 && rng.NextDouble() < 0.0005) ? (byte)0xFF : (byte)0x00,
-                        _ => neighbors == 2 || neighbors == 3 || (neighbors >= 2 && rng.NextDouble() < 0.0005) ? (byte)(this.cells[this.primary, x, y] - 1) : (byte)0x00,
-                    };
+                    var currentPixel = y * this.width + x;
 
-                    if (this.cells[successor, x, y] < 0)
-                    {
-                        this.cells[successor, x, y] = 0x00;
-                    }
+                    // this is all the rules of life in 1 line of code
+                    targetCells[currentPixel] = (byte)(
+                        (((((neighbors >> 2) ^ 0x01) << 1) & neighbors) >> 1)
+                        * ((neighbors & 0x01) | (sourceCells[currentPixel] & 0x01))
+                        * 0xFF);
                 }
             }
-
-            this.primary = successor;
         }
 
         private int CountLivingNeighbors(int x, int y)
         {
-            var xmin = x > 0 ? x - 1 : this.width - 1; // wrap right
-            var xmax = x < this.width - 1 ? x + 1 : 0; // wrap left
-            var ymin = y > 0 ? y - 1 : this.height - 1;  // wrap top
-            var ymax = y < this.height - 1 ? y + 1 : 0; // wrap bottom
+            // wrap on the edges
+            var xmin = x > 0 ? x - 1 : this.width - 1;
+            var xmax = x < this.width - 1 ? x + 1 : 0;
+            var ymin = y > 0 ? y - 1 : this.height - 1;
+            var ymax = y < this.height - 1 ? y + 1 : 0;
 
             var count = 0;
 
-            // value > zero is alive
+            // cells can be 0xFF or 0x00. Any non-zero value is alive
 
             // left column
-            count += this.cells[this.primary, xmin, ymin] > 0 ? 1 : 0;
-            count += this.cells[this.primary, xmin, y] > 0 ? 1 : 0;
-            count += this.cells[this.primary, xmin, ymax] > 0 ? 1 : 0;
+            count += this.cells[this.source][xmin + this.width * ymin];
+            count += this.cells[this.source][xmin + this.width * y];
+            count += this.cells[this.source][xmin + this.width * ymax];
 
             // right colum
-            count += this.cells[this.primary, xmax, ymin] > 0 ? 1 : 0;
-            count += this.cells[this.primary, xmax, y] > 0 ? 1 : 0;
-            count += this.cells[this.primary, xmax, ymax] > 0 ? 1 : 0;
+            count += this.cells[this.source][xmax + this.width * ymin];
+            count += this.cells[this.source][xmax + this.width * y];
+            count += this.cells[this.source][xmax + this.width * ymax];
 
             // center column (excluding current pixel)
-            count += this.cells[this.primary, x, ymin] > 0 ? 1 : 0;
-            count += this.cells[this.primary, x, ymax] > 0 ? 1 : 0;
+            count += this.cells[this.source][x + this.width * ymin];
+            count += this.cells[this.source][x + this.width * ymax];
+
+            count /= 0xFF;
 
             return count;
+        }
+
+        private void WriteFrame(int target)
+        {
+            var targetCells = this.cells[target];
+            var bitmap = this.frame.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.WriteOnly, this.frame.PixelFormat);
+            Marshal.Copy(targetCells, 0, bitmap.Scan0, targetCells.Length);
+            this.frame.UnlockBits(bitmap);
         }
     }
 }
