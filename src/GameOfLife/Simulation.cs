@@ -29,6 +29,7 @@ namespace GameOfLife
 
         public void GenerateFrameAsync()
         {
+            //await Task.Delay(125);
             var target = this.source ^ 1;
             this.ApplyRules(target);
             this.WriteFrame(target);
@@ -158,23 +159,24 @@ namespace GameOfLife
             var ymin = y > 0 ? y - 1 : this.height - 1;
             var ymax = y < this.height - 1 ? y + 1 : 0;
 
-            var count = 0;
+            var sourceCells = this.cells[this.source];
 
             // cells can be 0xFF or 0x00. Any non-zero value is alive
+            var count = 0;
 
             // left column
-            count += this.cells[this.source][xmin + this.width * ymin];
-            count += this.cells[this.source][xmin + this.width * y];
-            count += this.cells[this.source][xmin + this.width * ymax];
+            count += sourceCells[xmin + this.width * ymin];
+            count += sourceCells[xmin + this.width * y];
+            count += sourceCells[xmin + this.width * ymax];
 
             // right colum
-            count += this.cells[this.source][xmax + this.width * ymin];
-            count += this.cells[this.source][xmax + this.width * y];
-            count += this.cells[this.source][xmax + this.width * ymax];
+            count += sourceCells[xmax + this.width * ymin];
+            count += sourceCells[xmax + this.width * y];
+            count += sourceCells[xmax + this.width * ymax];
 
             // center column (excluding current pixel)
-            count += this.cells[this.source][x + this.width * ymin];
-            count += this.cells[this.source][x + this.width * ymax];
+            count += sourceCells[x + this.width * ymin];
+            count += sourceCells[x + this.width * ymax];
 
             count /= 0xFF;
 
