@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace GameOfLife
 {
@@ -23,10 +24,12 @@ namespace GameOfLife
             this.cells[1] = new byte[width * height];
             this.frame = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format8bppIndexed);
             this.frameBounds = new Rectangle(0, 0, width, height);
+
             this.width = width;
             this.height = height;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         public void GenerateFrameAsync()
         {
             var target = this.source ^ 1;
@@ -37,10 +40,11 @@ namespace GameOfLife
             this.FrameReady?.Invoke(this, EventArgs.Empty);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawFrame(Graphics graphics)
         {
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-            graphics.DrawImage(this.frame, 0, 0, this.width * 4, this.height * 4);
+            graphics.DrawImage(this.frame, 0, 0, this.width * 2, this.height * 2);
             this.GenerateFrameAsync();
         }
 
@@ -52,11 +56,11 @@ namespace GameOfLife
             using var graphics = Graphics.FromImage(resizedImage);
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
             graphics.DrawImage(image, 0, 0, this.width, this.height);
-            
+
             var bitmap = resizedImage.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.ReadOnly, resizedImage.PixelFormat);
             var rgb = new byte[bitmap.Stride * this.height];
             Marshal.Copy(bitmap.Scan0, rgb, 0, rgb.Length);
-            
+
             var targetCells = this.cells[this.source];
 
             var cell = 0;
@@ -84,6 +88,7 @@ namespace GameOfLife
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         private void ApplyRules(int target)
         {
             var sourceCells = this.cells[this.source];
@@ -150,37 +155,42 @@ namespace GameOfLife
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         private int CountLivingNeighbors(int x, int y)
         {
+            // note: I tried precalculating the neighbors and adding them to a lookup array, but this was slower than calculating on the fly. that was a surprise.
+
             // wrap on the edges
             var xmin = x > 0 ? x - 1 : this.width - 1;
             var xmax = x < this.width - 1 ? x + 1 : 0;
             var ymin = y > 0 ? y - 1 : this.height - 1;
             var ymax = y < this.height - 1 ? y + 1 : 0;
 
+            var sourceCells = this.cells[this.source];
             var count = 0;
 
-            // cells can be 0xFF or 0x00. Any non-zero value is alive
+            // cells can be 0xFF or 0x00
 
             // left column
-            count += this.cells[this.source][xmin + this.width * ymin];
-            count += this.cells[this.source][xmin + this.width * y];
-            count += this.cells[this.source][xmin + this.width * ymax];
+            count += sourceCells[xmin + this.width * ymin];
+            count += sourceCells[xmin + this.width * y];
+            count += sourceCells[xmin + this.width * ymax];
 
             // right colum
-            count += this.cells[this.source][xmax + this.width * ymin];
-            count += this.cells[this.source][xmax + this.width * y];
-            count += this.cells[this.source][xmax + this.width * ymax];
+            count += sourceCells[xmax + this.width * ymin];
+            count += sourceCells[xmax + this.width * y];
+            count += sourceCells[xmax + this.width * ymax];
 
             // center column (excluding current pixel)
-            count += this.cells[this.source][x + this.width * ymin];
-            count += this.cells[this.source][x + this.width * ymax];
+            count += sourceCells[x + this.width * ymin];
+            count += sourceCells[x + this.width * ymax];
 
             count /= 0xFF;
 
             return count;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         private void WriteFrame(int target)
         {
             var targetCells = this.cells[target];
