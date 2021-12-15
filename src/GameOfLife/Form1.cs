@@ -8,6 +8,7 @@ namespace GameOfLife
         private readonly Simulation simulation;
         private readonly Stopwatch stopwatch = new();
         private long framecount = 0;
+        private readonly int magnifier = 3;
 
         public Life()
         {
@@ -15,9 +16,12 @@ namespace GameOfLife
 
             //this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
             this.Width = 1200;
-            this.Height = 800;
+            this.Height = 900;
 
-            this.simulation = new(this.Width / 4, this.Height / 4);
+            this.simulation = new(
+                this.Width / this.magnifier, 
+                this.Height / this.magnifier, 
+                this.magnifier);
             this.simulation.FrameReady += this.Simulation_FrameReady;
         }
 
@@ -39,13 +43,6 @@ namespace GameOfLife
 
             this.stopwatch.Start();
             this.simulation.GenerateFrameAsync();
-
-            //var initialState = new (int x, int y)[36];
-            //initialState[0] = (1, 5);
-            //initialState[1] = (1, 6);
-            //initialState[2] = (2, 5);
-            //initialState[3] = (2, 6);
-            //var json = JsonConvert.SerializeObject(initialState);
         }
 
         private void Simulation_FrameReady(object? sender, EventArgs e)
