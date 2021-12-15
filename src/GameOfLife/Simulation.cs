@@ -44,8 +44,23 @@ namespace GameOfLife
         public void DrawFrame(Graphics graphics)
         {
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-            graphics.DrawImage(this.frame, 0, 0, this.width * 2, this.height * 2);
+            graphics.DrawImage(this.frame, 0, 0, this.width * 4, this.height * 4);
             this.GenerateFrameAsync();
+        }
+
+        public void LetThereBeLight((int x, int y)[] initialState)
+        {
+            var stateWidth = initialState.Max(t => t.x) - initialState.Min(t => t.x);
+            var stateHeight = initialState.Max(t => t.y) - initialState.Min(t => t.y);
+            var offset = (x: this.width / 2 - stateWidth / 2, y: this.height / 2 - stateHeight / 2);
+
+            for(var i = 0; i<initialState.Length; ++i)
+            {
+                var state = initialState[i];
+                var x = state.x + offset.x;
+                var y = state.y + offset.y;
+                this.cells[this.source][y * this.width + x] = (byte)0xFF;
+            }
         }
 
         public void LetThereBeLight(Image image)

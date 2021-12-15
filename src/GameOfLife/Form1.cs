@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using System.Diagnostics;
 
 namespace GameOfLife
@@ -11,12 +12,12 @@ namespace GameOfLife
         public Life()
         {
             this.InitializeComponent();
-            
+
             //this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
-            this.Width = 1600;
+            this.Width = 1200;
             this.Height = 800;
 
-            this.simulation = new(this.Width / 2, this.Height / 2);
+            this.simulation = new(this.Width / 4, this.Height / 4);
             this.simulation.FrameReady += this.Simulation_FrameReady;
         }
 
@@ -24,10 +25,27 @@ namespace GameOfLife
         {
             base.OnLoad(e);
 
-            this.simulation.LetThereBeLight(7);
+            var json = File.ReadAllText("initialState.json");
+            var initialState = JsonConvert.DeserializeObject<(int x, int y)[]>(json);
+            if (initialState == null)
+            {
+                throw new FileFormatException();
+            }
+
+            this.simulation.LetThereBeLight(initialState);
+
+            //this.simulation.LetThereBeLight(7);
             //this.simulation.LetThereBeLight(Bitmap.FromFile("cortana.jpg"));
+
             this.stopwatch.Start();
             this.simulation.GenerateFrameAsync();
+
+            //var initialState = new (int x, int y)[36];
+            //initialState[0] = (1, 5);
+            //initialState[1] = (1, 6);
+            //initialState[2] = (2, 5);
+            //initialState[3] = (2, 6);
+            //var json = JsonConvert.SerializeObject(initialState);
         }
 
         private void Simulation_FrameReady(object? sender, EventArgs e)
