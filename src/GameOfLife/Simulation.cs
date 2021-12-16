@@ -13,7 +13,6 @@ namespace GameOfLife
         private readonly Bitmap frame;
         private readonly Rectangle frameBounds;
         private readonly byte[][] cells;
-        private readonly int[][] neighbors;
         private int source = 0;
         private readonly int width;
         private readonly int height;
@@ -27,35 +26,8 @@ namespace GameOfLife
             this.cells = new byte[2][];
             this.cells[0] = new byte[width * height];
             this.cells[1] = new byte[width * height];
-            this.neighbors = new int[width * height][];
-            this.PrecomputeNeighbors();
             this.frame = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format8bppIndexed);
             this.frameBounds = new Rectangle(0, 0, width, height);
-        }
-
-        private void PrecomputeNeighbors()
-        {
-            for (var x = 0; x < this.width; ++x)
-            {
-                for (var y = 0; y < this.height; ++y)
-                {
-                    var xmin = x > 0 ? x - 1 : this.width - 1;
-                    var xmax = x < this.width - 1 ? x + 1 : 0;
-                    var ymin = y > 0 ? y - 1 : this.height - 1;
-                    var ymax = y < this.height - 1 ? y + 1 : 0;
-                    var currentPixel = y * this.width + x;
-
-                    this.neighbors[currentPixel] = new int[8];
-                    this.neighbors[currentPixel][0] = xmin + this.width * ymin;
-                    this.neighbors[currentPixel][1] = xmin + this.width * y;
-                    this.neighbors[currentPixel][2] = xmin + this.width * ymax;
-                    this.neighbors[currentPixel][3] = xmax + this.width * ymin;
-                    this.neighbors[currentPixel][4] = xmax + this.width * y;
-                    this.neighbors[currentPixel][5] = xmax + this.width * ymax;
-                    this.neighbors[currentPixel][6] = x + this.width * ymin;
-                    this.neighbors[currentPixel][7] = x + this.width * ymax;
-                }
-            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
@@ -138,15 +110,6 @@ namespace GameOfLife
             var sourceCells = this.cells[this.source];
             var targetCells = this.cells[target];
 
-            //for (var currentPixel = 0; currentPixel < sourceCells.Length; ++currentPixel)
-            //{
-            //    var neighbors = this.CountLivingNeighbors(currentPixel, sourceCells);
-            //    targetCells[currentPixel] = (byte)(
-            //        (((((neighbors >> 2) ^ 0x01) << 1) & neighbors) >> 1)
-            //        * ((neighbors & 0x01) | (sourceCells[currentPixel] & 0x01))
-            //        * 0xFF);
-            //}
-
             for (var x = 0; x < this.width; ++x)
             {
                 for (var y = 0; y < this.height; ++y)
@@ -162,26 +125,6 @@ namespace GameOfLife
                         * 0xFF);
                 }
             }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-        private int CountLivingNeighbors(int currentPixel, byte[] sourceCells)
-        {
-            var neighbors = this.neighbors[currentPixel];
-
-            return
-                // left column
-                (sourceCells[neighbors[0]]
-                + sourceCells[neighbors[1]]
-                + sourceCells[neighbors[2]]
-                // right colum
-                + sourceCells[neighbors[3]]
-                + sourceCells[neighbors[4]]
-                + sourceCells[neighbors[5]]
-                // center column (excluding current pixel)
-                + sourceCells[neighbors[6]]
-                + sourceCells[neighbors[7]])
-                / 0xFF;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
