@@ -5,22 +5,21 @@ namespace GameOfLife
 {
     public partial class Life : Form
     {
-        private readonly Simulation simulation;
+        private readonly SimulationV2 simulation;
         private readonly Stopwatch stopwatch = new();
-        private long framecount = 0;
-        private readonly int magnifier = 6;
+        private readonly int magnifier = 3;
 
         public Life()
         {
             this.InitializeComponent();
 
-            //this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.None;
             this.Width = 1200;
             this.Height = 900;
 
             this.simulation = new(
-                this.Width / this.magnifier, 
-                this.Height / this.magnifier, 
+                this.Width / this.magnifier,
+                this.Height / this.magnifier,
                 this.magnifier);
             this.simulation.FrameReady += this.Simulation_FrameReady;
         }
@@ -37,9 +36,7 @@ namespace GameOfLife
             }
 
             this.simulation.LetThereBeLight(initialState);
-
             //this.simulation.LetThereBeLight(7);
-            //this.simulation.LetThereBeLight(Bitmap.FromFile("cortana.jpg"));
 
             this.stopwatch.Start();
             this.simulation.GenerateFrame();
@@ -47,9 +44,12 @@ namespace GameOfLife
 
         private void Simulation_FrameReady(object? sender, EventArgs e)
         {
-            ++this.framecount;
-            var fps = (int)(this.framecount / this.stopwatch.Elapsed.TotalSeconds);
-            this.Text = $"Life - Generations ({this.simulation.Generations}), FPS ({fps})";
+            if (this.simulation.Generations % 100 == 0)
+            {
+                var fps = (int)(this.simulation.Generations / this.stopwatch.Elapsed.TotalSeconds);
+                this.Text = $"Life - Generations ({this.simulation.Generations}), FPS ({fps})";
+            }
+
             this.Invalidate();
         }
 
@@ -60,7 +60,7 @@ namespace GameOfLife
 
         private void Life_Click(object sender, EventArgs e)
         {
-            // this.simulation.GenerateFrame();
+            this.Close();
         }
     }
 }
