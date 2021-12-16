@@ -8,7 +8,7 @@ namespace GameOfLife
         private readonly Simulation simulation;
         private readonly Stopwatch stopwatch = new();
         private long framecount = 0;
-        private readonly int magnifier = 3;
+        private readonly int magnifier = 6;
 
         public Life()
         {
@@ -42,7 +42,7 @@ namespace GameOfLife
             //this.simulation.LetThereBeLight(Bitmap.FromFile("cortana.jpg"));
 
             this.stopwatch.Start();
-            this.simulation.GenerateFrameAsync();
+            this.simulation.GenerateFrame();
         }
 
         private void Simulation_FrameReady(object? sender, EventArgs e)
@@ -56,6 +56,11 @@ namespace GameOfLife
         private void Life_Paint(object sender, PaintEventArgs e)
         {
             this.simulation.DrawFrame(e.Graphics);
+        }
+
+        private void Life_Click(object sender, EventArgs e)
+        {
+            // this.simulation.GenerateFrame();
         }
     }
 }

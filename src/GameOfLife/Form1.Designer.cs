@@ -41,6 +41,7 @@
             this.Name = "Life";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "Life";
+            this.Click += new System.EventHandler(this.Life_Click);
             this.Paint += new System.Windows.Forms.PaintEventHandler(this.Life_Paint);
             this.ResumeLayout(false);
 
