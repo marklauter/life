@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace GameOfLife
 {
@@ -15,19 +16,22 @@ namespace GameOfLife
         private int source = 0;
         private readonly int width;
         private readonly int height;
+        private readonly int magnifier;
 
-        public Simulation(int width, int height)
+        public Simulation(int width, int height, int magnifier)
         {
+            this.width = width;
+            this.height = height;
+            this.magnifier = magnifier;
             this.cells = new byte[2][];
             this.cells[0] = new byte[width * height];
             this.cells[1] = new byte[width * height];
             this.frame = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format8bppIndexed);
             this.frameBounds = new Rectangle(0, 0, width, height);
-            this.width = width;
-            this.height = height;
         }
 
-        public void GenerateFrameAsync()
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        public void GenerateFrame()
         {
             var target = this.source ^ 1;
             this.ApplyRules(target);
@@ -37,11 +41,27 @@ namespace GameOfLife
             this.FrameReady?.Invoke(this, EventArgs.Empty);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawFrame(Graphics graphics)
         {
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-            graphics.DrawImage(this.frame, 0, 0, this.width * 4, this.height * 4);
-            this.GenerateFrameAsync();
+            graphics.DrawImage(this.frame, 0, 0, this.width * this.magnifier, this.height * this.magnifier);
+            this.GenerateFrame();
+        }
+
+        public void LetThereBeLight((int x, int y)[] initialState)
+        {
+            var stateWidth = initialState.Max(t => t.x) - initialState.Min(t => t.x);
+            var stateHeight = initialState.Max(t => t.y) - initialState.Min(t => t.y);
+            var offset = (x: this.width / 2 - stateWidth / 2, y: this.height / 2 - stateHeight / 2);
+
+            for (var i = 0; i < initialState.Length; ++i)
+            {
+                var state = initialState[i];
+                var x = state.x + offset.x;
+                var y = state.y + offset.y;
+                this.cells[this.source][y * this.width + x] = 0xFF;
+            }
         }
 
         public void LetThereBeLight(Image image)
@@ -52,11 +72,11 @@ namespace GameOfLife
             using var graphics = Graphics.FromImage(resizedImage);
             graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
             graphics.DrawImage(image, 0, 0, this.width, this.height);
-            
+
             var bitmap = resizedImage.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.ReadOnly, resizedImage.PixelFormat);
             var rgb = new byte[bitmap.Stride * this.height];
             Marshal.Copy(bitmap.Scan0, rgb, 0, rgb.Length);
-            
+
             var targetCells = this.cells[this.source];
 
             var cell = 0;
@@ -84,64 +104,21 @@ namespace GameOfLife
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         private void ApplyRules(int target)
         {
             var sourceCells = this.cells[this.source];
             var targetCells = this.cells[target];
+
             for (var x = 0; x < this.width; ++x)
             {
                 for (var y = 0; y < this.height; ++y)
                 {
-                    var neighbors = this.CountLivingNeighbors(x, y);
-                    // SR 2
-                    // 0000 0000 1 
-                    // 0000 0000 2 
-                    // 0000 0000 3
-                    // 0000 0001 4
-                    // 0000 0001 5
-                    // 0000 0001 6
-                    // 0000 0001 7
-                    // 0000 0010 8
-                    // XOR 0x01
-                    // 0000 0001 1 
-                    // 0000 0001 2 
-                    // 0000 0001 3
-                    // 0000 0000 4
-                    // 0000 0000 5
-                    // 0000 0000 6
-                    // 0000 0000 7
-                    // 0000 0011 8
-                    // SL 1
-                    // 0000 0010 1 
-                    // 0000 0010 2 
-                    // 0000 0010 3
-                    // 0000 0000 4
-                    // 0000 0000 5
-                    // 0000 0000 6
-                    // 0000 0000 7
-                    // 0000 0110 8
-                    // AND self
-                    // 0000 0000 1 
-                    // 0000 0010 2 
-                    // 0000 0010 3
-                    // 0000 0000 4
-                    // 0000 0000 5
-                    // 0000 0000 6
-                    // 0000 0000 7
-                    // 0000 0000 8
-                    // SR 1
-                    // 0000 0000 1 
-                    // 0000 0001 2 
-                    // 0000 0001 3
-                    // 0000 0000 4
-                    // 0000 0000 5
-                    // 0000 0000 6
-                    // 0000 0000 7
-                    // 0000 0000 8
+                    var neighbors = this.CountLivingNeighbors(x, y, sourceCells);
 
                     var currentPixel = y * this.width + x;
 
-                    // this is all the rules of life in 1 line of code
+                    // this is all the rules of life in 1 line of code - no conditionals
                     targetCells[currentPixel] = (byte)(
                         (((((neighbors >> 2) ^ 0x01) << 1) & neighbors) >> 1)
                         * ((neighbors & 0x01) | (sourceCells[currentPixel] & 0x01))
@@ -150,43 +127,42 @@ namespace GameOfLife
             }
         }
 
-        private int CountLivingNeighbors(int x, int y)
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+        private int CountLivingNeighbors(int x, int y, byte[] sourceCells)
         {
+            // note: I tried precalculating the neighbors and adding them to a lookup array, but this was slower than calculating on the fly. that was a surprise.
+
             // wrap on the edges
             var xmin = x > 0 ? x - 1 : this.width - 1;
             var xmax = x < this.width - 1 ? x + 1 : 0;
             var ymin = y > 0 ? y - 1 : this.height - 1;
             var ymax = y < this.height - 1 ? y + 1 : 0;
 
-            var count = 0;
+            // cells can be 0xFF or 0x00
 
-            // cells can be 0xFF or 0x00. Any non-zero value is alive
-
-            // left column
-            count += this.cells[this.source][xmin + this.width * ymin];
-            count += this.cells[this.source][xmin + this.width * y];
-            count += this.cells[this.source][xmin + this.width * ymax];
-
-            // right colum
-            count += this.cells[this.source][xmax + this.width * ymin];
-            count += this.cells[this.source][xmax + this.width * y];
-            count += this.cells[this.source][xmax + this.width * ymax];
-
-            // center column (excluding current pixel)
-            count += this.cells[this.source][x + this.width * ymin];
-            count += this.cells[this.source][x + this.width * ymax];
-
-            count /= 0xFF;
-
-            return count;
+            return
+                // left column
+                (sourceCells[xmin + this.width * ymin]
+                + sourceCells[xmin + this.width * y]
+                + sourceCells[xmin + this.width * ymax]
+                // right colum
+                + sourceCells[xmax + this.width * ymin]
+                + sourceCells[xmax + this.width * y]
+                + sourceCells[xmax + this.width * ymax]
+                // center column (excluding current pixel)
+                + sourceCells[x + this.width * ymin]
+                + sourceCells[x + this.width * ymax])
+                / 0xFF;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
         private void WriteFrame(int target)
         {
             var targetCells = this.cells[target];
-            var bitmap = this.frame.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.WriteOnly, this.frame.PixelFormat);
+            var bitmap = this.frame.LockBits(this.frameBounds, System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format8bppIndexed);
             Marshal.Copy(targetCells, 0, bitmap.Scan0, targetCells.Length);
             this.frame.UnlockBits(bitmap);
         }
     }
 }
+
