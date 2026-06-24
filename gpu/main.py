@@ -4,8 +4,8 @@ It opens as a battle: a Gosper glider gun sits in each corner of the torus, all
 firing toward the center, so their glider streams cross and tear at the opposing
 guns. The gun positions are jittered each game, so no two battles play out the
 same. Defend them — each left click drops a random "bomb" of life, and the right
-button drags to erase. The game beeps every 15 seconds while a gun still fires,
-and sounds a knell when the last one dies.
+button drags to erase. A triumphant chime sounds every 10 seconds while a gun
+still fires, a sad note when any gun falls, and a knell when the last one dies.
 
 The window is resizable and keeps the board's aspect ratio; scaling is
 nearest-neighbor, so cells stay crisp squares. The simulation runs independently
@@ -50,8 +50,9 @@ except ImportError:  # non-Windows: run silently
         pass
 
 
-ALIVE_BEEP = [(880, 120)]  # a gun still fires
-DEATH_KNELL = [(392, 220), (330, 240), (262, 280), (196, 700)]  # last gun died
+TRIUMPH = [(523, 90), (659, 90), (784, 90), (1047, 200)]  # a gun still fires (every 10s)
+GUN_DOWN = [(440, 130), (330, 280)]  # one gun died (others remain)
+DEATH_KNELL = [(392, 220), (330, 240), (262, 280), (196, 700)]  # the last gun died
 
 ti.init(arch=ti.gpu)
 
@@ -272,16 +273,16 @@ while window.running:
     if battle and sim.generations >= SETTLE and now - last_check >= 0.25:
         last_check = now
         arr = sim.a.to_numpy()
-        any_was = any(alive)
+        before = sum(alive)
         for k, box in enumerate(boxes):
             if alive[k] and box_sig(arr, box) not in phase_sets[k]:
                 alive[k] = False
-        any_now = any(alive)
-        if any_now and now - last_beep >= 15:
-            play(ALIVE_BEEP)
+        after = sum(alive)
+        if before > after:
+            play(DEATH_KNELL if after == 0 else GUN_DOWN)  # knell only for the last
+        elif after > 0 and now - last_beep >= 10:
+            play(TRIUMPH)
             last_beep = now
-        elif any_was and not any_now:
-            play(DEATH_KNELL)
 
     ensure_display(w, h)
     upscale(sim.a, display_img, WIDTH, HEIGHT, dw, dh, ox, oy)

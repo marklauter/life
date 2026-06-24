@@ -5,9 +5,9 @@ Gosper glider gun sits in each corner of the board, all firing toward the
 center. The board is a torus — gliders that fly off one edge come back on the
 other, asteroids-style — so the four streams cross and tear at the opposing
 guns. The gun positions are jittered each game, so no two battles play out the
-same. You defend the guns by dropping bombs of life with the mouse. The game
-beeps every 15 seconds while a gun still fires, and sounds a knell when the last
-one dies.
+same. You defend the guns by dropping bombs of life with the mouse. A triumphant
+chime sounds every 10 seconds while a gun still fires, a sad note when any gun
+falls, and a knell when the last one dies.
 
 This is the `gpu-taichi` branch. It reimplements the WinForms simulation in
 Python with [Taichi](https://www.taichi-lang.org/), which compiles the rules to
