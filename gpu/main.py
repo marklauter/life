@@ -62,6 +62,7 @@ TRIUMPH = [(523, 90), (659, 90), (784, 90), (1047, 200)]  # a gun still fires (e
 GUN_DOWN = [(440, 130), (330, 280)]  # one gun died (others remain)
 DEATH_KNELL = [(392, 220), (330, 240), (262, 280), (196, 700)]  # the last gun died
 CRASH = [(196, 70), (147, 90), (98, 180)]  # the ship hit a live cell
+PEW = [(1200, 30), (700, 35)]  # bullet fired
 
 ti.init(arch=ti.gpu)
 
@@ -72,6 +73,7 @@ JITTER = 30          # max random offset of each gun toward the center
 SETTLE = 120         # generations before a gun's box reaches its steady cycle
 COLLIDE_R = 6        # ship collision radius in cells
 SPAWN_SAFE = 1.5     # seconds of invulnerability after the ship respawns
+DEATH_TIME = 1.2     # seconds the ship spends broken apart before respawning
 BULLET_SPEED = 420.0  # cells per second
 BULLET_LIFE = 1.0    # seconds before a bullet expires
 MAX_BULLETS = 64
@@ -88,6 +90,7 @@ ship = Ship(WIDTH, HEIGHT)
 ship_verts = ti.Vector.field(2, ti.f32, shape=8)
 ship_flame = ti.Vector.field(2, ti.f32, shape=4)
 bullet_pos = ti.Vector.field(2, ti.f32, shape=MAX_BULLETS)
+debris_seg = ti.Vector.field(2, ti.f32, shape=2)  # one fragment at a time
 
 window = ti.ui.Window("life — gpu (taichi)", (WIDTH, HEIGHT), vsync=VSYNC)
 canvas = window.get_canvas()
@@ -224,9 +227,12 @@ def start_battle():
 running = True
 battle = True
 ship_mode = False
+ship_alive = True
+ship_dead_until = 0.0
 ship_hits = 0
 ship_safe_until = 0.0
 bullets = []
+debris = []
 brush = 6
 prev_lmb = False
 steps_per_frame = 1
@@ -261,6 +267,7 @@ while window.running:
                     vx = math.cos(ship.angle) * BULLET_SPEED + ship.vx
                     vy = math.sin(ship.angle) * BULLET_SPEED + ship.vy
                     bullets.append([nx, ny, vx, vy, 0.0])
+                    play(PEW)
             else:
                 running = not running
         elif e.key == "j":
@@ -286,7 +293,8 @@ while window.running:
             # afterward steers it (handled below), so it won't relaunch.
             sim.scatter_gliders(40)
             ship.reset()
-            ship_hits, bullets = 0, []
+            ship_hits, bullets, debris = 0, [], []
+            ship_alive, ship_dead_until = True, 0.0
             ship_safe_until = time.perf_counter() + SPAWN_SAFE
             battle, ship_mode, running = False, True, True
         elif e.key == "z":
@@ -324,14 +332,44 @@ while window.running:
     # Fly the ship at frame rate, independent of the sim's steps/frame.
     dt = min(now - prev_time, 0.05)
     prev_time = now
-    thrust_on = ship_mode and window.is_pressed("w")
-    if ship_mode:
+    thrust_on = ship_mode and ship_alive and window.is_pressed("w")
+    if ship_mode and ship_alive:
         ship.update(dt, thrust_on, window.is_pressed("a"), window.is_pressed("d"))
         if now > ship_safe_until and cells_in_disk(sim.a, int(ship.x), int(ship.y), COLLIDE_R) > 0:
             play(CRASH)
-            ship.reset()
-            ship_safe_until = now + SPAWN_SAFE
             ship_hits += 1
+            ship_alive = False
+            ship_dead_until = now + DEATH_TIME
+            # Break the outline into drifting, spinning fragments.
+            pts = ship.outline()
+            debris = []
+            for a, b in [(pts[0], pts[1]), (pts[1], pts[2]), (pts[2], pts[3]), (pts[3], pts[0])]:
+                mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+                hx, hy = (b[0] - a[0]) / 2, (b[1] - a[1]) / 2
+                outx, outy = mx - ship.x, my - ship.y
+                norm = math.hypot(outx, outy) or 1.0
+                push = np.random.uniform(20, 50)
+                vx = ship.vx + outx / norm * push + np.random.uniform(-10, 10)
+                vy = ship.vy + outy / norm * push + np.random.uniform(-10, 10)
+                debris.append([mx, my, hx, hy, vx, vy, np.random.uniform(-2.5, 2.5), 0.0])
+    elif ship_mode and now >= ship_dead_until:
+        ship.reset()
+        ship_alive = True
+        ship_safe_until = now + SPAWN_SAFE
+        debris = []
+
+    # Drift and spin the debris fragments while the ship is broken apart.
+    if ship_mode and debris:
+        survivors = []
+        for f in debris:
+            ca, sa = math.cos(f[6] * dt), math.sin(f[6] * dt)
+            f[2], f[3] = f[2] * ca - f[3] * sa, f[2] * sa + f[3] * ca
+            f[0] = (f[0] + f[4] * dt) % WIDTH
+            f[1] = (f[1] + f[5] * dt) % HEIGHT
+            f[7] += dt
+            if f[7] < DEATH_TIME:
+                survivors.append(f)
+        debris = survivors
 
     # Move bullets; clear any life cell they hit, expire the rest.
     if ship_mode and bullets:
@@ -375,7 +413,7 @@ while window.running:
     canvas.set_image(display_img)
 
     line_w = 1.0 / h  # one pixel — as thin as the line renderer goes
-    if ship_mode:
+    if ship_mode and ship_alive:
         # Ship outline as a closed loop of line segments.
         nose, right, notch, left = ship.outline()
         pts = [nose, right, right, notch, notch, left, left, nose]
@@ -395,13 +433,23 @@ while window.running:
             ship_flame.from_numpy(fverts)
             canvas.lines(ship_flame, width=line_w, color=SHIP_COLOR)
 
-        # Pixel bullets (inactive slots parked off-canvas).
-        if bullets:
-            bnp = np.full((MAX_BULLETS, 2), -1.0, dtype=np.float32)
-            for i, b in enumerate(bullets[:MAX_BULLETS]):
-                bnp[i] = to_ndc(b[0], b[1], w, h, dw, dh, ox, oy)
-            bullet_pos.from_numpy(bnp)
-            canvas.circles(bullet_pos, radius=2.0 / h, color=SHIP_COLOR)
+    # Broken-apart fragments, each fading as it ages.
+    if ship_mode and debris:
+        for f in debris:
+            seg = np.empty((2, 2), dtype=np.float32)
+            seg[0] = to_ndc(f[0] - f[2], f[1] - f[3], w, h, dw, dh, ox, oy)
+            seg[1] = to_ndc(f[0] + f[2], f[1] + f[3], w, h, dw, dh, ox, oy)
+            debris_seg.from_numpy(seg)
+            fade = max(0.0, 1.0 - f[7] / DEATH_TIME)
+            canvas.lines(debris_seg, width=line_w, color=(fade, fade, fade))
+
+    # Pixel bullets keep flying even while the ship is broken apart.
+    if ship_mode and bullets:
+        bnp = np.full((MAX_BULLETS, 2), -1.0, dtype=np.float32)
+        for i, b in enumerate(bullets[:MAX_BULLETS]):
+            bnp[i] = to_ndc(b[0], b[1], w, h, dw, dh, ox, oy)
+        bullet_pos.from_numpy(bnp)
+        canvas.circles(bullet_pos, radius=2.0 / h, color=SHIP_COLOR)
 
     with gui.sub_window("life", 0.27, 0.0, 0.46, 0.4):  # top-center, clears the corners
         gui.text(f"{'running' if running else 'paused'}   gen {sim.generations}")
