@@ -13,6 +13,20 @@ import json
 import numpy as np
 import taichi as ti
 
+# Live-cell offsets (x, y), stamped relative to a placement point.
+GLIDER = [(1, 0), (2, 1), (0, 2), (1, 2), (2, 2)]
+
+# Gosper glider gun: fires one glider every 30 generations, forever.
+GOSPER_GUN = [
+    (1, 5), (1, 6), (2, 5), (2, 6),
+    (11, 5), (11, 6), (11, 7), (12, 4), (12, 8), (13, 3), (13, 9),
+    (14, 3), (14, 9), (15, 6), (16, 4), (16, 8),
+    (17, 5), (17, 6), (17, 7), (18, 6),
+    (21, 3), (21, 4), (21, 5), (22, 3), (22, 4), (22, 5), (23, 2), (23, 6),
+    (25, 1), (25, 2), (25, 6), (25, 7),
+    (35, 3), (35, 4), (36, 3), (36, 4),
+]
+
 
 @ti.data_oriented
 class Simulation:
@@ -107,3 +121,30 @@ class Simulation:
         # transpose to land on (x, y) with the image upright.
         lum = np.flipud(np.asarray(img)).T
         self._load(lum >= threshold)
+
+    def stamp(self, cells, x: int, y: int, fx: int = 1, fy: int = 1):
+        """Add a pattern of live-cell offsets at (x, y), wrapping at the edges.
+
+        fx/fy of -1 mirror the pattern, varying a glider's heading. Stamping
+        leaves the rest of the board and the generation count untouched.
+        """
+        arr = self.a.to_numpy()
+        for dx, dy in cells:
+            arr[(x + fx * dx) % self.width, (y + fy * dy) % self.height] = 1
+        self.a.from_numpy(np.ascontiguousarray(arr, dtype=np.int32))
+
+    def scatter_gliders(self, count: int):
+        """Drop `count` gliders at random spots, flying in random diagonals."""
+        for _ in range(count):
+            self.stamp(
+                GLIDER,
+                int(np.random.randint(self.width)),
+                int(np.random.randint(self.height)),
+                int(np.random.choice((-1, 1))),
+                int(np.random.choice((-1, 1))),
+            )
+
+    def seed_gun(self):
+        """Clear the board and place a Gosper glider gun."""
+        self.clear()
+        self.stamp(GOSPER_GUN, 2, self.height - GOSPER_GUN[-1][1] - 4)

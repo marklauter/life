@@ -53,6 +53,8 @@ The panel shows live fps and generations/sec.
 - `j` — reseed from `initialState.json`
 - `i` — reseed from `cortana.jpg`
 - `c` — clear the board
+- `g` — scatter gliders flying in random directions
+- `k` — place a Gosper glider gun (fires a glider every 30 generations)
 - `z` / `x` — shrink or grow the brush
 - `esc` — quit
 

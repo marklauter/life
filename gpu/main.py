@@ -17,6 +17,8 @@ Controls:
   j       reseed from initialState.json
   i       reseed from cortana.jpg
   c       clear
+  g       scatter gliders
+  k       place a Gosper glider gun
   z / x   shrink / grow brush
   esc     quit
 """
@@ -43,12 +45,18 @@ canvas = window.get_canvas()
 gui = window.get_gui()
 
 
-# Crisp scaling: upscale the grid to the window's exact pixel size with
-# nearest-neighbor sampling, so GGUI displays it 1:1 and never blurs a cell.
+# Crisp scaling: upscale the grid with nearest-neighbor sampling into a fitted
+# rectangle (dw x dh) offset by (ox, oy), so GGUI never blurs a cell and the
+# board keeps its aspect ratio. Pixels outside the rectangle are the letterbox.
 @ti.kernel
-def upscale(src: ti.template(), dst: ti.template(), sw: int, sh: int, dw: int, dh: int):
+def upscale(src: ti.template(), dst: ti.template(),
+            sw: int, sh: int, dw: int, dh: int, ox: int, oy: int):
     for i, j in dst:
-        v = ti.cast(src[i * sw // dw, j * sh // dh], ti.f32)
+        x = i - ox
+        y = j - oy
+        v = 0.0
+        if 0 <= x < dw and 0 <= y < dh:
+            v = ti.cast(src[x * sw // dw, y * sh // dh], ti.f32)
         dst[i, j] = ti.Vector([v, v, v])  # white cells on black
 
 
@@ -84,12 +92,24 @@ fps = 0.0
 gens_per_sec = 0.0
 
 
-def paint_at(value: int):
+def paint_at(value: int, w: int, h: int, dw: int, dh: int, ox: int, oy: int):
+    # Map the cursor through the fitted rectangle; ignore clicks in the bars.
     mx, my = window.get_cursor_pos()
-    sim.paint(int(mx * WIDTH), int(my * HEIGHT), brush, value)
+    px = mx * w - ox
+    py = my * h - oy
+    if 0 <= px < dw and 0 <= py < dh:
+        sim.paint(int(px * WIDTH / dw), int(py * HEIGHT / dh), brush, value)
 
 
 while window.running:
+    # Fit the square grid into the window at its aspect ratio (letterboxed).
+    w, h = window.get_window_shape()
+    scale = min(w / WIDTH, h / HEIGHT)
+    dw = max(1, int(WIDTH * scale))
+    dh = max(1, int(HEIGHT * scale))
+    ox = (w - dw) // 2
+    oy = (h - dh) // 2
+
     for e in window.get_events(ti.ui.PRESS):
         if e.key == ti.ui.ESCAPE:
             window.running = False
@@ -107,15 +127,21 @@ while window.running:
         elif e.key == "c":
             sim.clear()
             running = False
+        elif e.key == "g":
+            sim.scatter_gliders(40)
+            running = True
+        elif e.key == "k":
+            sim.seed_gun()
+            running = True
         elif e.key == "z":
             brush = max(1, brush - 1)
         elif e.key == "x":
             brush += 1
 
     if window.is_pressed(ti.ui.LMB):
-        paint_at(1)
+        paint_at(1, w, h, dw, dh, ox, oy)
     if window.is_pressed(ti.ui.RMB):
-        paint_at(0)
+        paint_at(0, w, h, dw, dh, ox, oy)
 
     if running:
         for _ in range(steps_per_frame):
@@ -130,9 +156,8 @@ while window.running:
         gens_per_sec = (sim.generations - mark_gens) / dt
         mark_time, mark_frames, mark_gens = now, frames, sim.generations
 
-    w, h = window.get_window_shape()
     ensure_display(w, h)
-    upscale(sim.a, display_img, WIDTH, HEIGHT, w, h)
+    upscale(sim.a, display_img, WIDTH, HEIGHT, dw, dh, ox, oy)
     canvas.set_image(display_img)
     with gui.sub_window("life", 0.0, 0.0, 0.46, 0.24):
         gui.text(f"{'running' if running else 'paused'}   gen {sim.generations}")
@@ -141,4 +166,5 @@ while window.running:
         brush = gui.slider_int("brush", brush, 1, 40)
         gui.text("[LMB] draw  [RMB] erase")
         gui.text("[r]andom [j]son [i]mage [c]lear")
+        gui.text("[g]liders  glider [k]gun")
     window.show()
