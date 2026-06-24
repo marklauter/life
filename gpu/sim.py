@@ -92,21 +92,17 @@ class Simulation:
         self._load(np.random.random((self.width, self.height)) < chance)
 
     def seed_json(self, path: str):
-        """Seed from a list of {Item1, Item2} coordinates, centered on the board.
+        """Seed from a list of {Item1, Item2} coordinates placed on the board.
 
-        Mirrors the WinForms `LetThereBeLight((int x, int y)[])` on main: it
-        offsets the pattern to the middle of the grid without subtracting the
-        pattern's own origin.
+        Coordinates are absolute board positions, wrapping at the edges, so a
+        file lays out a specific board — like the four corner glider guns in
+        initialState.json.
         """
         with open(path, encoding="utf-8-sig") as f:
             points = json.load(f)
-        xs = [p["Item1"] for p in points]
-        ys = [p["Item2"] for p in points]
-        ox = self.width // 2 - (max(xs) - min(xs)) // 2
-        oy = self.height // 2 - (max(ys) - min(ys)) // 2
         arr = np.zeros((self.width, self.height), dtype=np.int32)
-        for x, y in zip(xs, ys):
-            arr[(x + ox) % self.width, (y + oy) % self.height] = 1
+        for p in points:
+            arr[p["Item1"] % self.width, p["Item2"] % self.height] = 1
         self._load(arr)
 
     def seed_image(self, path: str, threshold: int = 175):
@@ -148,3 +144,13 @@ class Simulation:
         """Clear the board and place a Gosper glider gun."""
         self.clear()
         self.stamp(GOSPER_GUN, 2, self.height - GOSPER_GUN[-1][1] - 4)
+
+    def bomb(self, cx: int, cy: int, radius: int, density: float = 0.5):
+        """Drop a random splat of live cells in a disk — a little bomb of life."""
+        arr = self.a.to_numpy()
+        r2 = radius * radius
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                if dx * dx + dy * dy <= r2 and np.random.random() < density:
+                    arr[(cx + dx) % self.width, (cy + dy) % self.height] = 1
+        self.a.from_numpy(np.ascontiguousarray(arr, dtype=np.int32))

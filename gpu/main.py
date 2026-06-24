@@ -1,25 +1,25 @@
 """Native display and input for the GPU Game of Life.
 
-Run it, then draw: hold the left mouse button and drag to paint live cells,
-right button to erase. The board is a torus, so brush strokes and gliders wrap
-around the edges. Seed it the way main does (centered JSON pattern) by default,
-or reseed at runtime from the keyboard.
+It starts as a four-gun battle: a Gosper glider gun sits in each corner of the
+torus, all firing toward the center, so their glider streams cross and tear at
+the opposing guns. Defend them — each left click drops a random "bomb" of life
+to disrupt incoming gliders, and the right button drags to erase.
 
-The window is resizable — drag any edge and the board scales to fill it. The
-simulation stays a fixed grid; resizing only zooms the view. Cursor positions
-are normalized, so drawing lands on the right cell at any window size.
+The window is resizable — drag any edge and the board scales to fill it, keeping
+its aspect ratio. The simulation stays a fixed grid; resizing only zooms the
+view. Cursor positions map through the fit, so input lands on the right cell.
 
 Controls:
   space   run / pause
-  LMB     draw   (hold and drag)
-  RMB     erase  (hold and drag)
-  r       reseed random
-  j       reseed from initialState.json
-  i       reseed from cortana.jpg
+  LMB     drop a random bomb of life (one per click)
+  RMB     erase (hold and drag)
+  j       restart the four-gun battle
   c       clear
+  r       reseed random
+  i       reseed from cortana.jpg
   g       scatter gliders
-  k       place a Gosper glider gun
-  z / x   shrink / grow brush
+  k       place a single Gosper glider gun
+  z / x   shrink / grow bomb size
   esc     quit
 """
 
@@ -79,8 +79,9 @@ def ensure_display(w: int, h: int):
     _display_shape = (w, h)
 
 
-running = False
+running = True
 brush = 6
+prev_lmb = False
 # Decouple the sim from the 60 Hz display: advance many generations per frame.
 steps_per_frame = 1
 
@@ -92,13 +93,14 @@ fps = 0.0
 gens_per_sec = 0.0
 
 
-def paint_at(value: int, w: int, h: int, dw: int, dh: int, ox: int, oy: int):
-    # Map the cursor through the fitted rectangle; ignore clicks in the bars.
+def cursor_cell(w: int, h: int, dw: int, dh: int, ox: int, oy: int):
+    """Map the cursor through the fitted rectangle to a grid cell, or None."""
     mx, my = window.get_cursor_pos()
     px = mx * w - ox
     py = my * h - oy
     if 0 <= px < dw and 0 <= py < dh:
-        sim.paint(int(px * WIDTH / dw), int(py * HEIGHT / dh), brush, value)
+        return int(px * WIDTH / dw), int(py * HEIGHT / dh)
+    return None
 
 
 while window.running:
@@ -119,8 +121,8 @@ while window.running:
             sim.seed_random(CHANCE)
             running = False
         elif e.key == "j":
-            sim.seed_json("initialState.json")
-            running = False
+            sim.seed_json("initialState.json")  # restart the four-gun battle
+            running = True
         elif e.key == "i":
             sim.seed_image("cortana.jpg")
             running = False
@@ -138,10 +140,19 @@ while window.running:
         elif e.key == "x":
             brush += 1
 
-    if window.is_pressed(ti.ui.LMB):
-        paint_at(1, w, h, dw, dh, ox, oy)
+    # Each left click drops a random "bomb" of life; rising edge = one per click.
+    lmb = window.is_pressed(ti.ui.LMB)
+    if lmb and not prev_lmb:
+        cell = cursor_cell(w, h, dw, dh, ox, oy)
+        if cell is not None:
+            sim.bomb(cell[0], cell[1], brush)
+    prev_lmb = lmb
+
+    # Right button drags to erase, for defending the guns.
     if window.is_pressed(ti.ui.RMB):
-        paint_at(0, w, h, dw, dh, ox, oy)
+        cell = cursor_cell(w, h, dw, dh, ox, oy)
+        if cell is not None:
+            sim.paint(cell[0], cell[1], brush, 0)
 
     if running:
         for _ in range(steps_per_frame):
@@ -163,8 +174,8 @@ while window.running:
         gui.text(f"{'running' if running else 'paused'}   gen {sim.generations}")
         gui.text(f"{fps:.0f} fps   {gens_per_sec:,.0f} gen/s")
         steps_per_frame = gui.slider_int("steps/frame", steps_per_frame, 1, 500)
-        brush = gui.slider_int("brush", brush, 1, 40)
-        gui.text("[LMB] draw  [RMB] erase")
-        gui.text("[r]andom [j]son [i]mage [c]lear")
-        gui.text("[g]liders  glider [k]gun")
+        brush = gui.slider_int("bomb size", brush, 1, 40)
+        gui.text("[LMB] bomb  [RMB] erase")
+        gui.text("[j] four-gun battle  [c]lear")
+        gui.text("[r]andom [i]mage [g]liders [k]gun")
     window.show()

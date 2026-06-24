@@ -1,8 +1,10 @@
 # Game of Life on the GPU (Taichi)
 
-A GPU implementation of Conway's Game of Life that you can draw into with the
-mouse. The board is a torus — cells, brush strokes, and gliders all wrap around
-the edges, asteroids-style.
+A GPU Game of Life that plays like a game. It opens as a four-gun battle: a
+Gosper glider gun sits in each corner of the board, all firing toward the
+center. The board is a torus — gliders that fly off one edge come back on the
+other, asteroids-style — so the four streams cross and tear at the opposing
+guns. You defend the guns by dropping bombs of life with the mouse.
 
 This is the `gpu-taichi` branch. It reimplements the WinForms simulation in
 Python with [Taichi](https://www.taichi-lang.org/), which compiles the rules to
@@ -31,8 +33,7 @@ py -3.12 -m venv .venv
 .venv/Scripts/python main.py
 ```
 
-The window opens paused with a centered seed pattern so you can draw before you
-start. Press space to run.
+The window opens with the four-gun battle already running. Press space to pause.
 
 Drag any edge to resize the window — the board scales to fill it. The grid stays
 a fixed resolution, so resizing zooms the view rather than adding cells, and
@@ -47,29 +48,29 @@ The panel shows live fps and generations/sec.
 ## Controls
 
 - `space` — run or pause
-- left mouse — draw live cells (hold and drag)
+- left mouse — drop a random bomb of life (one per click)
 - right mouse — erase (hold and drag)
-- `r` — reseed at random
-- `j` — reseed from `initialState.json`
-- `i` — reseed from `cortana.jpg`
+- `j` — restart the four-gun battle
 - `c` — clear the board
+- `r` — reseed at random
+- `i` — reseed from `cortana.jpg`
 - `g` — scatter gliders flying in random directions
-- `k` — place a Gosper glider gun (fires a glider every 30 generations)
-- `z` / `x` — shrink or grow the brush
+- `k` — place a single Gosper glider gun
+- `z` / `x` — shrink or grow the bomb
 - `esc` — quit
 
-The panel also has sliders for steps/frame (simulation speed) and brush size.
+The panel also has sliders for steps/frame (simulation speed) and bomb size.
 
 ## Seeding
 
-The branch keeps the seeds the WinForms app uses and adds mouse drawing:
-
+- Four guns — `initialState.json` holds the starting layout: 144 cells laying
+  out a Gosper glider gun in each corner. The JSON coordinates are absolute
+  board positions, so the guns land in the corners.
+- Bomb — each left click writes a random splat of live cells in a disk.
 - Random — light each cell with a fixed probability.
-- JSON — load `initialState.json`, a list of `{Item1, Item2}` coordinates, and
-  center the pattern on the board, the same way `LetThereBeLight` does on main.
 - Image — resize `cortana.jpg` to the grid and light pixels brighter than a
   luminance threshold, the same idea as the `age` branch.
-- Mouse — paint cells directly with a round brush that wraps at the edges.
+- Gliders — scatter gliders, or place a single Gosper gun.
 
 ## Tests
 
