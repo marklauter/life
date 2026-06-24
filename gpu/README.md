@@ -34,6 +34,16 @@ py -3.12 -m venv .venv
 The window opens paused with a centered seed pattern so you can draw before you
 start. Press space to run.
 
+Drag any edge to resize the window — the board scales to fill it. The grid stays
+a fixed resolution, so resizing zooms the view rather than adding cells, and
+drawing still lands on the right cell at any size. Scaling uses nearest-neighbor
+sampling, so cells stay crisp squares instead of blurring into blobs.
+
+The display runs at your monitor's refresh, but the simulation is decoupled from
+it: the steps/frame slider advances many generations per drawn frame, so the
+board can evolve thousands of generations a second while the window stays smooth.
+The panel shows live fps and generations/sec.
+
 ## Controls
 
 - `space` — run or pause
@@ -45,6 +55,8 @@ start. Press space to run.
 - `c` — clear the board
 - `z` / `x` — shrink or grow the brush
 - `esc` — quit
+
+The panel also has sliders for steps/frame (simulation speed) and brush size.
 
 ## Seeding
 

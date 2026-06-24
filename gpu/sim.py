@@ -26,7 +26,6 @@ class Simulation:
         # explicit and sidesteps stale field capture.
         self.a = ti.field(ti.i32, shape=(width, height))
         self.b = ti.field(ti.i32, shape=(width, height))
-        self.image = ti.field(ti.f32, shape=(width, height))
         self.generations = 0
 
     @ti.kernel
@@ -108,13 +107,3 @@ class Simulation:
         # transpose to land on (x, y) with the image upright.
         lum = np.flipud(np.asarray(img)).T
         self._load(lum >= threshold)
-
-    @ti.kernel
-    def _render(self, src: ti.template(), out: ti.template()):
-        for i, j in src:
-            out[i, j] = ti.cast(src[i, j], ti.f32)
-
-    def render(self):
-        """Return the current generation as a float field for display."""
-        self._render(self.a, self.image)
-        return self.image
