@@ -54,6 +54,8 @@ The panel shows live fps and generations/sec.
 - left mouse — drop a random bomb of life (one per click)
 - right mouse — erase (hold and drag)
 - `j` — restart the four-gun battle
+- `a` — launch the asteroids ship over a glider field
+- `w` / `a` / `d` — fly the ship: thrust / turn left / turn right
 - `c` — clear the board
 - `r` — reseed at random
 - `i` — reseed from `cortana.jpg`
@@ -75,6 +77,10 @@ The panel also has sliders for steps/frame (simulation speed) and bomb size.
 - Image — resize `cortana.jpg` to the grid and light pixels brighter than a
   luminance threshold, the same idea as the `age` branch.
 - Gliders — scatter gliders, or place a single Gosper gun.
+- Asteroids — `a` scatters a glider field and drops in a vector ship you fly
+  with W/A/D. Thrust accelerates along the heading, momentum carries, a light
+  drag bleeds off speed, and the ship wraps at the edges — 1980s Asteroids
+  physics. The ship is a flown overlay; it does not seed cells.
 
 ## Detecting a downed gun
 

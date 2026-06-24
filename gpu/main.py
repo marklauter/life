@@ -16,6 +16,8 @@ Controls:
   LMB     drop a random bomb of life (one per click)
   RMB     erase (hold and drag)
   j       restart the four-gun battle (new random layout)
+  a       launch the asteroids ship over a glider field
+  w/a/d   fly the ship: thrust / turn left / turn right
   c       clear
   r       reseed random
   i       reseed from cortana.jpg
@@ -32,6 +34,7 @@ import numpy as np
 import taichi as ti
 
 from sim import GOSPER_GUN, Simulation
+from ship import Ship
 
 try:
     import winsound
@@ -66,6 +69,10 @@ SETTLE = 120        # generations before a gun's box reaches its steady cycle
 VSYNC = True
 
 sim = Simulation(WIDTH, HEIGHT)
+ship = Ship(WIDTH, HEIGHT)
+# Vector ship outline: 4 segments = 8 endpoints. A root field, so it is declared
+# before the first kernel launch (the phase capture below).
+ship_verts = ti.Vector.field(2, ti.f32, shape=8)
 
 window = ti.ui.Window("life — gpu (taichi)", (WIDTH, HEIGHT), vsync=VSYNC)
 canvas = window.get_canvas()
@@ -184,10 +191,12 @@ def start_battle():
 
 running = True
 battle = True
+ship_mode = False
 brush = 6
 prev_lmb = False
 steps_per_frame = 1
 last_check = 0.0
+prev_time = time.perf_counter()
 
 mark_time = time.perf_counter()
 mark_gens = 0
@@ -214,28 +223,28 @@ while window.running:
             running = not running
         elif e.key == "j":
             start_battle()
-            battle = True
-            running = True
+            battle, ship_mode, running = True, False, True
         elif e.key == "c":
             sim.clear()
-            battle = False
-            running = False
+            battle, ship_mode, running = False, False, False
         elif e.key == "r":
             sim.seed_random(CHANCE)
-            battle = False
-            running = False
+            battle, ship_mode, running = False, False, False
         elif e.key == "i":
             sim.seed_image("cortana.jpg")
-            battle = False
-            running = False
+            battle, ship_mode, running = False, False, False
         elif e.key == "g":
             sim.scatter_gliders(40)
-            battle = False
-            running = True
+            battle, ship_mode, running = False, False, True
         elif e.key == "k":
             sim.seed_gun()
-            battle = False
-            running = True
+            battle, ship_mode, running = False, False, True
+        elif e.key == "a" and not ship_mode:
+            # First 'a' launches the asteroids ship over a glider field; held 'a'
+            # afterward steers it (handled below), so it won't relaunch.
+            sim.scatter_gliders(40)
+            ship.reset()
+            battle, ship_mode, running = False, True, True
         elif e.key == "z":
             brush = max(1, brush - 1)
         elif e.key == "x":
@@ -268,6 +277,13 @@ while window.running:
         gens_per_sec = (sim.generations - mark_gens) / dt
         mark_time, mark_frames, mark_gens = now, frames, sim.generations
 
+    # Fly the ship at frame rate, independent of the sim's steps/frame.
+    dt = min(now - prev_time, 0.05)
+    prev_time = now
+    if ship_mode:
+        ship.update(dt, window.is_pressed("w"), window.is_pressed("a"),
+                    window.is_pressed("d"))
+
     # Gun liveness and audio. Wait for the boxes to reach their steady cycle, and
     # a gun stays dead once detected.
     if battle and sim.generations >= SETTLE and now - last_check >= 0.25:
@@ -287,14 +303,28 @@ while window.running:
     ensure_display(w, h)
     upscale(sim.a, display_img, WIDTH, HEIGHT, dw, dh, ox, oy)
     canvas.set_image(display_img)
-    with gui.sub_window("life", 0.27, 0.0, 0.46, 0.32):  # top-center, clears the corners
+
+    # Draw the vector ship over the board (as a closed outline of line segments).
+    if ship_mode:
+        nose, right, notch, left = ship.outline()
+        pts = [nose, right, right, notch, notch, left, left, nose]
+        verts = np.empty((8, 2), dtype=np.float32)
+        for idx, (gx, gy) in enumerate(pts):
+            verts[idx, 0] = (ox + gx * dw / WIDTH) / w
+            verts[idx, 1] = (oy + gy * dh / HEIGHT) / h
+        ship_verts.from_numpy(verts)
+        canvas.lines(ship_verts, width=0.004, color=(0.3, 1.0, 0.4))
+
+    with gui.sub_window("life", 0.27, 0.0, 0.46, 0.34):  # top-center, clears the corners
         gui.text(f"{'running' if running else 'paused'}   gen {sim.generations}")
         gui.text(f"{fps:.0f} fps   {gens_per_sec:,.0f} gen/s")
         if battle:
             gui.text(f"guns alive: {sum(alive)}/4")
+        if ship_mode:
+            gui.text("[W] thrust  [A/D] turn")
         steps_per_frame = gui.slider_int("steps/frame", steps_per_frame, 1, 500)
         brush = gui.slider_int("bomb size", brush, 1, 40)
         gui.text("[LMB] bomb  [RMB] erase")
-        gui.text("[j] four-gun battle  [c]lear")
+        gui.text("[j] battle  [a]steroids  [c]lear")
         gui.text("[r]andom [i]mage [g]liders [k]gun")
     window.show()
