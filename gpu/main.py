@@ -7,12 +7,16 @@ same. Defend them — each left click drops a random "bomb" of life, and the rig
 button drags to erase. A triumphant chime sounds every 10 seconds while a gun
 still fires, a sad note when any gun falls, and a knell when the last one dies.
 
+Press 'a' for the asteroids ship: fly it with W/A/D over a glider field, and the
+space bar fires pixel bullets that destroy the life cells they hit. Fly into a
+live cell and the ship crashes.
+
 The window is resizable and keeps the board's aspect ratio; scaling is
 nearest-neighbor, so cells stay crisp squares. The simulation runs independently
 of the display — the steps/frame slider advances many generations per drawn frame.
 
 Controls:
-  space   run / pause
+  space   run / pause  (in ship mode: fire bullets)
   LMB     drop a random bomb of life (one per click)
   RMB     erase (hold and drag)
   j       restart the four-gun battle (new random layout)
@@ -27,6 +31,7 @@ Controls:
   esc     quit
 """
 
+import math
 import threading
 import time
 
@@ -56,23 +61,33 @@ except ImportError:  # non-Windows: run silently
 TRIUMPH = [(523, 90), (659, 90), (784, 90), (1047, 200)]  # a gun still fires (every 10s)
 GUN_DOWN = [(440, 130), (330, 280)]  # one gun died (others remain)
 DEATH_KNELL = [(392, 220), (330, 240), (262, 280), (196, 700)]  # the last gun died
+CRASH = [(196, 70), (147, 90), (98, 180)]  # the ship hit a live cell
 
 ti.init(arch=ti.gpu)
 
 WIDTH = HEIGHT = 512
 CHANCE = 0.2
-MARGIN = 2          # corner inset for the guns
-JITTER = 30         # max random offset of each gun toward the center
-SETTLE = 120        # generations before a gun's box reaches its steady cycle
+MARGIN = 2            # corner inset for the guns
+JITTER = 30          # max random offset of each gun toward the center
+SETTLE = 120         # generations before a gun's box reaches its steady cycle
+COLLIDE_R = 6        # ship collision radius in cells
+SPAWN_SAFE = 1.5     # seconds of invulnerability after the ship respawns
+BULLET_SPEED = 420.0  # cells per second
+BULLET_LIFE = 1.0    # seconds before a bullet expires
+MAX_BULLETS = 64
+SHIP_COLOR = (1.0, 1.0, 1.0)  # same white as the life cells
 # vsync=True presents at your monitor's refresh (120 Hz here). Set False to
 # uncap the display entirely. Either way, steps/frame decouples the sim from it.
 VSYNC = True
 
 sim = Simulation(WIDTH, HEIGHT)
 ship = Ship(WIDTH, HEIGHT)
-# Vector ship outline: 4 segments = 8 endpoints. A root field, so it is declared
-# before the first kernel launch (the phase capture below).
+# Overlay vertex buffers — root fields, declared before the first kernel launch
+# (the phase capture below). Ship outline is 4 segments (8 endpoints), flame is
+# 2 segments (4 endpoints).
 ship_verts = ti.Vector.field(2, ti.f32, shape=8)
+ship_flame = ti.Vector.field(2, ti.f32, shape=4)
+bullet_pos = ti.Vector.field(2, ti.f32, shape=MAX_BULLETS)
 
 window = ti.ui.Window("life — gpu (taichi)", (WIDTH, HEIGHT), vsync=VSYNC)
 canvas = window.get_canvas()
@@ -92,6 +107,18 @@ def upscale(src: ti.template(), dst: ti.template(),
         if 0 <= x < dw and 0 <= y < dh:
             v = ti.cast(src[x * sw // dw, y * sh // dh], ti.f32)
         dst[i, j] = ti.Vector([v, v, v])  # white cells on black
+
+
+@ti.kernel
+def cells_in_disk(src: ti.template(), cx: int, cy: int, r: int) -> ti.i32:
+    """Count live cells within radius r of (cx, cy) — the ship collision test."""
+    count = 0
+    for _ in range(1):  # serialize the small scan; no parallel reduction
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                if dx * dx + dy * dy <= r * r:
+                    count += src[(cx + dx) % WIDTH, (cy + dy) % HEIGHT]
+    return count
 
 
 _display_shape = None
@@ -152,6 +179,11 @@ ORIENTATIONS = [(1, 1), (-1, 1), (1, -1), (-1, -1)]
 ORIENTATION_PHASES = {o: orientation_phases(*o) for o in ORIENTATIONS}
 
 
+def to_ndc(gx, gy, w, h, dw, dh, ox, oy):
+    """Map a grid point through the aspect-fit to normalized window coords."""
+    return (ox + gx * dw / WIDTH) / w, (oy + gy * dh / HEIGHT) / h
+
+
 def cursor_cell(w: int, h: int, dw: int, dh: int, ox: int, oy: int):
     """Map the cursor through the fitted rectangle to a grid cell, or None."""
     mx, my = window.get_cursor_pos()
@@ -192,6 +224,9 @@ def start_battle():
 running = True
 battle = True
 ship_mode = False
+ship_hits = 0
+ship_safe_until = 0.0
+bullets = []
 brush = 6
 prev_lmb = False
 steps_per_frame = 1
@@ -220,30 +255,39 @@ while window.running:
         if e.key == ti.ui.ESCAPE:
             window.running = False
         elif e.key == ti.ui.SPACE:
-            running = not running
+            if ship_mode:  # fire a pixel bullet from the nose
+                if len(bullets) < MAX_BULLETS:
+                    nx, ny = ship.outline()[0]
+                    vx = math.cos(ship.angle) * BULLET_SPEED + ship.vx
+                    vy = math.sin(ship.angle) * BULLET_SPEED + ship.vy
+                    bullets.append([nx, ny, vx, vy, 0.0])
+            else:
+                running = not running
         elif e.key == "j":
             start_battle()
-            battle, ship_mode, running = True, False, True
+            battle, ship_mode, running, bullets = True, False, True, []
         elif e.key == "c":
             sim.clear()
-            battle, ship_mode, running = False, False, False
+            battle, ship_mode, running, bullets = False, False, False, []
         elif e.key == "r":
             sim.seed_random(CHANCE)
-            battle, ship_mode, running = False, False, False
+            battle, ship_mode, running, bullets = False, False, False, []
         elif e.key == "i":
             sim.seed_image("cortana.jpg")
-            battle, ship_mode, running = False, False, False
+            battle, ship_mode, running, bullets = False, False, False, []
         elif e.key == "g":
             sim.scatter_gliders(40)
-            battle, ship_mode, running = False, False, True
+            battle, ship_mode, running, bullets = False, False, True, []
         elif e.key == "k":
             sim.seed_gun()
-            battle, ship_mode, running = False, False, True
+            battle, ship_mode, running, bullets = False, False, True, []
         elif e.key == "a" and not ship_mode:
             # First 'a' launches the asteroids ship over a glider field; held 'a'
             # afterward steers it (handled below), so it won't relaunch.
             sim.scatter_gliders(40)
             ship.reset()
+            ship_hits, bullets = 0, []
+            ship_safe_until = time.perf_counter() + SPAWN_SAFE
             battle, ship_mode, running = False, True, True
         elif e.key == "z":
             brush = max(1, brush - 1)
@@ -272,17 +316,43 @@ while window.running:
     frames += 1
     now = time.perf_counter()
     if now - mark_time >= 0.5:
-        dt = now - mark_time
-        fps = (frames - mark_frames) / dt
-        gens_per_sec = (sim.generations - mark_gens) / dt
+        elapsed = now - mark_time
+        fps = (frames - mark_frames) / elapsed
+        gens_per_sec = (sim.generations - mark_gens) / elapsed
         mark_time, mark_frames, mark_gens = now, frames, sim.generations
 
     # Fly the ship at frame rate, independent of the sim's steps/frame.
     dt = min(now - prev_time, 0.05)
     prev_time = now
+    thrust_on = ship_mode and window.is_pressed("w")
     if ship_mode:
-        ship.update(dt, window.is_pressed("w"), window.is_pressed("a"),
-                    window.is_pressed("d"))
+        ship.update(dt, thrust_on, window.is_pressed("a"), window.is_pressed("d"))
+        if now > ship_safe_until and cells_in_disk(sim.a, int(ship.x), int(ship.y), COLLIDE_R) > 0:
+            play(CRASH)
+            ship.reset()
+            ship_safe_until = now + SPAWN_SAFE
+            ship_hits += 1
+
+    # Move bullets; clear any life cell they hit, expire the rest.
+    if ship_mode and bullets:
+        arr = sim.a.to_numpy()
+        modified = False
+        survivors = []
+        for b in bullets:
+            b[0] = (b[0] + b[2] * dt) % WIDTH
+            b[1] = (b[1] + b[3] * dt) % HEIGHT
+            b[4] += dt
+            bx, by = int(b[0]), int(b[1])
+            if arr[bx, by]:
+                for ddx in (-1, 0, 1):
+                    for ddy in (-1, 0, 1):
+                        arr[(bx + ddx) % WIDTH, (by + ddy) % HEIGHT] = 0
+                modified = True
+            elif b[4] < BULLET_LIFE:
+                survivors.append(b)
+        bullets = survivors
+        if modified:
+            sim.a.from_numpy(np.ascontiguousarray(arr, dtype=np.int32))
 
     # Gun liveness and audio. Wait for the boxes to reach their steady cycle, and
     # a gun stays dead once detected.
@@ -304,24 +374,43 @@ while window.running:
     upscale(sim.a, display_img, WIDTH, HEIGHT, dw, dh, ox, oy)
     canvas.set_image(display_img)
 
-    # Draw the vector ship over the board (as a closed outline of line segments).
+    line_w = 1.0 / h  # one pixel — as thin as the line renderer goes
     if ship_mode:
+        # Ship outline as a closed loop of line segments.
         nose, right, notch, left = ship.outline()
         pts = [nose, right, right, notch, notch, left, left, nose]
         verts = np.empty((8, 2), dtype=np.float32)
         for idx, (gx, gy) in enumerate(pts):
-            verts[idx, 0] = (ox + gx * dw / WIDTH) / w
-            verts[idx, 1] = (oy + gy * dh / HEIGHT) / h
+            verts[idx] = to_ndc(gx, gy, w, h, dw, dh, ox, oy)
         ship_verts.from_numpy(verts)
-        canvas.lines(ship_verts, width=0.004, color=(0.3, 1.0, 0.4))
+        canvas.lines(ship_verts, width=line_w, color=SHIP_COLOR)
 
-    with gui.sub_window("life", 0.27, 0.0, 0.46, 0.34):  # top-center, clears the corners
+        # Exhaust flame while thrusting (flicker for the classic look).
+        if thrust_on and (frames // 3) % 2 == 0:
+            fl, ft, fr = ship.flame()
+            fpts = [fl, ft, ft, fr]
+            fverts = np.empty((4, 2), dtype=np.float32)
+            for idx, (gx, gy) in enumerate(fpts):
+                fverts[idx] = to_ndc(gx, gy, w, h, dw, dh, ox, oy)
+            ship_flame.from_numpy(fverts)
+            canvas.lines(ship_flame, width=line_w, color=SHIP_COLOR)
+
+        # Pixel bullets (inactive slots parked off-canvas).
+        if bullets:
+            bnp = np.full((MAX_BULLETS, 2), -1.0, dtype=np.float32)
+            for i, b in enumerate(bullets[:MAX_BULLETS]):
+                bnp[i] = to_ndc(b[0], b[1], w, h, dw, dh, ox, oy)
+            bullet_pos.from_numpy(bnp)
+            canvas.circles(bullet_pos, radius=2.0 / h, color=SHIP_COLOR)
+
+    with gui.sub_window("life", 0.27, 0.0, 0.46, 0.4):  # top-center, clears the corners
         gui.text(f"{'running' if running else 'paused'}   gen {sim.generations}")
         gui.text(f"{fps:.0f} fps   {gens_per_sec:,.0f} gen/s")
         if battle:
             gui.text(f"guns alive: {sum(alive)}/4")
         if ship_mode:
-            gui.text("[W] thrust  [A/D] turn")
+            gui.text(f"crashes {ship_hits}")
+            gui.text("[W] thrust [A/D] turn [space] fire")
         steps_per_frame = gui.slider_int("steps/frame", steps_per_frame, 1, 500)
         brush = gui.slider_int("bomb size", brush, 1, 40)
         gui.text("[LMB] bomb  [RMB] erase")

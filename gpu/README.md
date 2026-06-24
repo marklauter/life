@@ -50,7 +50,7 @@ The panel shows live fps and generations/sec.
 
 ## Controls
 
-- `space` — run or pause
+- `space` — run or pause (in ship mode: fire pixel bullets)
 - left mouse — drop a random bomb of life (one per click)
 - right mouse — erase (hold and drag)
 - `j` — restart the four-gun battle
@@ -80,7 +80,11 @@ The panel also has sliders for steps/frame (simulation speed) and bomb size.
 - Asteroids — `a` scatters a glider field and drops in a vector ship you fly
   with W/A/D. Thrust accelerates along the heading, momentum carries, a light
   drag bleeds off speed, and the ship wraps at the edges — 1980s Asteroids
-  physics. The ship is a flown overlay; it does not seed cells.
+  physics. Thrusting shows an exhaust flame. The space bar fires pixel bullets
+  that clear the life cells they hit. Flying into a live cell crashes the ship,
+  which respawns at center with a moment of invulnerability. The ship is drawn
+  as a thin white vector outline, the same color as the cells; it is an overlay
+  and does not seed cells of its own.
 
 ## Detecting a downed gun
 

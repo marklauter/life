@@ -10,7 +10,7 @@ import math
 
 class Ship:
     def __init__(self, width, height, size=12.0, turn_rate=3.2,
-                 thrust=240.0, friction=0.6, max_speed=280.0):
+                 thrust=240.0, friction=0.2, max_speed=280.0):
         self.w = width
         self.h = height
         self.size = size          # nose-to-tail length in grid cells
@@ -55,5 +55,15 @@ class Ship:
             (-self.size * 0.7, self.size * 0.6),    # right rear
             (-self.size * 0.4, 0.0),                # tail notch
             (-self.size * 0.7, -self.size * 0.6),   # left rear
+        ]
+        return [(self.x + lx * c - ly * s, self.y + lx * s + ly * c) for lx, ly in local]
+
+    def flame(self):
+        """Exhaust flame chevron behind the tail: left base, tip, right base."""
+        c, s = math.cos(self.angle), math.sin(self.angle)
+        local = [
+            (-self.size * 0.4, self.size * 0.28),   # left base at the notch
+            (-self.size * 1.05, 0.0),               # flame tip behind the ship
+            (-self.size * 0.4, -self.size * 0.28),  # right base at the notch
         ]
         return [(self.x + lx * c - ly * s, self.y + lx * s + ly * c) for lx, ly in local]
