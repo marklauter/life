@@ -7,27 +7,30 @@ same. Defend them — each left click drops a random "bomb" of life, and the rig
 button drags to erase. A triumphant chime sounds every 10 seconds while a gun
 still fires, a sad note when any gun falls, and a knell when the last one dies.
 
-Press 'a' for the asteroids ship: fly it over a glider field with the arrow keys
-to turn and space to thrust, and the up arrow fires pixel bullets that destroy
-the life cells they hit. Fly into a live cell and the ship crashes.
+Press '1' for the asteroids ship: fly it over a glider field with A/D to turn
+and space to thrust, and the up arrow fires bullets that bomb a splat of new
+life where they hit, stirring the board rather than clearing it. Fly into a live
+cell and the ship crashes.
 
 The window is resizable and keeps the board's aspect ratio; scaling is
 nearest-neighbor, so cells stay crisp squares. The simulation runs independently
 of the display — the steps/frame slider advances many generations per drawn frame.
 
+Modes (number keys):
+  1       asteroids ship over a glider field
+  2       four-gun battle (new random layout)
+  3       scatter gliders
+  4       single Gosper glider gun
+  5       random soup
+  6       image (cortana.jpg)
+  7       clear
+
 Controls:
   space   run / pause  (in ship mode: thrust)
+  a / d   turn the ship left / right
+  up      fire bullets (ship mode)
   LMB     drop a random bomb of life (one per click)
   RMB     erase (hold and drag)
-  j       restart the four-gun battle (new random layout)
-  a       launch the asteroids ship over a glider field
-  arrows  fly the ship: left / right turn
-  up      fire bullets (ship mode)
-  c       clear
-  r       reseed random
-  i       reseed from cortana.jpg
-  g       scatter gliders
-  k       place a single Gosper glider gun
   z / x   shrink / grow bomb size
   esc     quit
 """
@@ -317,32 +320,32 @@ while window.running:
                 vy = math.sin(ship.angle) * BULLET_SPEED + ship.vy
                 bullets.append([nx, ny, vx, vy, 0.0])
                 play(PEW)
-        elif e.key == "j":
-            start_battle()
-            battle, ship_mode, running, bullets = True, False, True, []
-        elif e.key == "c":
-            sim.clear()
-            battle, ship_mode, running, bullets = False, False, False, []
-        elif e.key == "r":
-            sim.seed_random(CHANCE)
-            battle, ship_mode, running, bullets = False, False, False, []
-        elif e.key == "i":
-            sim.seed_image("cortana.jpg")
-            battle, ship_mode, running, bullets = False, False, False, []
-        elif e.key == "g":
-            sim.scatter_gliders(40)
-            battle, ship_mode, running, bullets = False, False, True, []
-        elif e.key == "k":
-            sim.seed_gun()
-            battle, ship_mode, running, bullets = False, False, True, []
-        elif e.key == "a" and not ship_mode:
-            # Launch the asteroids ship over a glider field (steered by arrows).
+        elif e.key == "1":
+            # Asteroids ship over a glider field; turn with A/D, thrust with space.
             sim.scatter_gliders(40)
             ship.reset()
             ship_hits, bullets, debris = 0, [], []
             ship_alive, ship_dead_until = True, 0.0
             ship_safe_until = time.perf_counter() + SPAWN_SAFE
             battle, ship_mode, running = False, True, True
+        elif e.key == "2":
+            start_battle()
+            battle, ship_mode, running, bullets = True, False, True, []
+        elif e.key == "3":
+            sim.scatter_gliders(40)
+            battle, ship_mode, running, bullets = False, False, True, []
+        elif e.key == "4":
+            sim.seed_gun()
+            battle, ship_mode, running, bullets = False, False, True, []
+        elif e.key == "5":
+            sim.seed_random(CHANCE)
+            battle, ship_mode, running, bullets = False, False, False, []
+        elif e.key == "6":
+            sim.seed_image("cortana.jpg")
+            battle, ship_mode, running, bullets = False, False, False, []
+        elif e.key == "7":
+            sim.clear()
+            battle, ship_mode, running, bullets = False, False, False, []
         elif e.key == "z":
             brush = max(1, brush - 1)
         elif e.key == "x":
@@ -386,8 +389,7 @@ while window.running:
         thrust_stop()
         thrust_sound = False
     if ship_mode and ship_alive:
-        ship.update(dt, thrust_on, window.is_pressed(ti.ui.LEFT),
-                    window.is_pressed(ti.ui.RIGHT))
+        ship.update(dt, thrust_on, window.is_pressed("a"), window.is_pressed("d"))
         if now > ship_safe_until and cells_in_disk(sim.a, int(ship.x), int(ship.y), COLLIDE_R) > 0:
             play(CRASH)
             ship_hits += 1
@@ -435,7 +437,10 @@ while window.running:
             b[4] += dt
             bx, by = int(b[0]), int(b[1])
             if arr[(bx + HIT_DX) % WIDTH, (by + HIT_DY) % HEIGHT].any():
-                arr[(bx + BLAST_DX) % WIDTH, (by + BLAST_DY) % HEIGHT] = 0  # blast
+                # Bomb a random splat of life like a mouse click, so the board
+                # keeps evolving — bullets stir it up, they never blank it.
+                mask = np.random.random(BLAST_DX.shape[0]) < 0.5
+                arr[(bx + BLAST_DX[mask]) % WIDTH, (by + BLAST_DY[mask]) % HEIGHT] = 1
                 modified = True
             elif b[4] < BULLET_LIFE:
                 survivors.append(b)
@@ -510,12 +515,12 @@ while window.running:
             gui.text(f"guns alive: {sum(alive)}/4")
         if ship_mode:
             gui.text(f"crashes {ship_hits}")
-            gui.text("[space] thrust [left/right] turn [up] fire")
+            gui.text("[space] thrust  [A/D] turn  [up] fire")
         steps_per_frame = gui.slider_int("steps/frame", steps_per_frame, 1, 500)
         brush = gui.slider_int("bomb size", brush, 1, 40)
         gui.text("[LMB] bomb  [RMB] erase")
-        gui.text("[j] battle  [a]steroids  [c]lear")
-        gui.text("[r]andom [i]mage [g]liders [k]gun")
+        gui.text("1 asteroids  2 battle  3 gliders  4 gun")
+        gui.text("5 random  6 image  7 clear")
     window.show()
 
 thrust_stop()  # silence the rumble on exit

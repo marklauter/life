@@ -48,20 +48,25 @@ it: the steps/frame slider advances many generations per drawn frame, so the
 board can evolve thousands of generations a second while the window stays smooth.
 The panel shows live fps and generations/sec.
 
+## Modes
+
+Number keys select the mode:
+
+- `1` — asteroids ship over a glider field
+- `2` — four-gun battle (new random layout)
+- `3` — scatter gliders
+- `4` — single Gosper glider gun
+- `5` — random soup
+- `6` — image (`cortana.jpg`)
+- `7` — clear the board
+
 ## Controls
 
 - `space` — run or pause (in ship mode: thrust, with a static rumble)
+- `a` / `d` — turn the ship left / right
+- up arrow — fire bullets (ship mode)
 - left mouse — drop a random bomb of life (one per click)
 - right mouse — erase (hold and drag)
-- `j` — restart the four-gun battle
-- `a` — launch the asteroids ship over a glider field
-- arrow keys — turn the ship left / right
-- up arrow — fire bullets (ship mode)
-- `c` — clear the board
-- `r` — reseed at random
-- `i` — reseed from `cortana.jpg`
-- `g` — scatter gliders flying in random directions
-- `k` — place a single Gosper glider gun
 - `z` / `x` — shrink or grow the bomb
 - `esc` — quit
 
@@ -78,13 +83,13 @@ The panel also has sliders for steps/frame (simulation speed) and bomb size.
 - Image — resize `cortana.jpg` to the grid and light pixels brighter than a
   luminance threshold, the same idea as the `age` branch.
 - Gliders — scatter gliders, or place a single Gosper gun.
-- Asteroids — `a` scatters a glider field and drops in a vector ship. Turn with
-  the arrow keys and thrust with space (a static rumble plays while thrusting).
-  Thrust accelerates along the heading, momentum carries, a light drag bleeds
-  off speed, and the ship wraps at the edges — 1980s Asteroids physics. Thrusting
-  shows an exhaust flame. The up arrow fires bullets (with a "pew") that catch
-  any cell within a few pixels and clear a small blast disk on impact, so they
-  reliably knock out sparse gliders. Flying into a live cell
+- Asteroids — `1` scatters a glider field and drops in a vector ship. Turn with
+  A/D and thrust with space (a static rumble plays while thrusting). Thrust
+  accelerates along the heading, momentum carries, a light drag bleeds off speed,
+  and the ship wraps at the edges — 1980s Asteroids physics. Thrusting shows an
+  exhaust flame. The up arrow fires bullets (with a "pew") that catch any cell
+  within a few pixels and bomb a random splat of life on impact, stirring the
+  board rather than clearing it — you can't shoot it blank. Flying into a live cell
   crashes the ship: it breaks apart into drifting, spinning fragments that fade,
   then respawns at center with a moment of invulnerability. The ship is drawn as
   a thin white vector outline, the same color as the cells; it is an overlay and
