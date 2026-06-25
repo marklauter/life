@@ -77,10 +77,24 @@ DEATH_TIME = 1.2     # seconds the ship spends broken apart before respawning
 BULLET_SPEED = 420.0  # cells per second
 BULLET_LIFE = 1.0    # seconds before a bullet expires
 MAX_BULLETS = 64
+BULLET_HIT_R = 3     # bullet hitbox radius (cells), so it catches sparse gliders
+BLAST_R = 4          # cells cleared in the blast when a bullet hits
 SHIP_COLOR = (1.0, 1.0, 1.0)  # same white as the life cells
 # vsync=True presents at your monitor's refresh (120 Hz here). Set False to
 # uncap the display entirely. Either way, steps/frame decouples the sim from it.
 VSYNC = True
+
+
+def _disk_offsets(r):
+    """Offset arrays (dx, dy) of the cells within radius r — for vectorized hits."""
+    pairs = [(dx, dy) for dx in range(-r, r + 1) for dy in range(-r, r + 1)
+             if dx * dx + dy * dy <= r * r]
+    a = np.array(pairs, dtype=np.int64)
+    return a[:, 0], a[:, 1]
+
+
+HIT_DX, HIT_DY = _disk_offsets(BULLET_HIT_R)
+BLAST_DX, BLAST_DY = _disk_offsets(BLAST_R)
 
 sim = Simulation(WIDTH, HEIGHT)
 ship = Ship(WIDTH, HEIGHT)
@@ -381,10 +395,8 @@ while window.running:
             b[1] = (b[1] + b[3] * dt) % HEIGHT
             b[4] += dt
             bx, by = int(b[0]), int(b[1])
-            if arr[bx, by]:
-                for ddx in (-1, 0, 1):
-                    for ddy in (-1, 0, 1):
-                        arr[(bx + ddx) % WIDTH, (by + ddy) % HEIGHT] = 0
+            if arr[(bx + HIT_DX) % WIDTH, (by + HIT_DY) % HEIGHT].any():
+                arr[(bx + BLAST_DX) % WIDTH, (by + BLAST_DY) % HEIGHT] = 0  # blast
                 modified = True
             elif b[4] < BULLET_LIFE:
                 survivors.append(b)

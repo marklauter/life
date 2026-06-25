@@ -80,8 +80,9 @@ The panel also has sliders for steps/frame (simulation speed) and bomb size.
 - Asteroids — `a` scatters a glider field and drops in a vector ship you fly
   with W/A/D. Thrust accelerates along the heading, momentum carries, a light
   drag bleeds off speed, and the ship wraps at the edges — 1980s Asteroids
-  physics. Thrusting shows an exhaust flame. The space bar fires pixel bullets
-  (with a "pew") that clear the life cells they hit. Flying into a live cell
+  physics. Thrusting shows an exhaust flame. The space bar fires bullets (with a
+  "pew") that catch any cell within a few pixels and clear a small blast disk on
+  impact, so they reliably knock out sparse gliders. Flying into a live cell
   crashes the ship: it breaks apart into drifting, spinning fragments that fade,
   then respawns at center with a moment of invulnerability. The ship is drawn as
   a thin white vector outline, the same color as the cells; it is an overlay and
