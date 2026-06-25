@@ -50,15 +50,15 @@ The panel shows live fps and generations/sec.
 
 ## Modes
 
-Number keys select the mode:
+Letter keys select the mode:
 
-- `1` — asteroids ship over a glider field
-- `2` — four-gun battle (new random layout)
-- `3` — scatter gliders
-- `4` — single Gosper glider gun
-- `5` — random soup
-- `6` — image (`cortana.jpg`)
-- `7` — clear the board
+- `s` — asteroids ship over a glider field
+- `b` — four-gun battle (new random layout)
+- `g` — scatter gliders
+- `k` — single Gosper glider gun
+- `r` — random soup
+- `i` — image (`cortana.jpg`)
+- `c` — clear the board
 
 ## Controls
 
@@ -83,7 +83,7 @@ The panel also has sliders for steps/frame (simulation speed) and bomb size.
 - Image — resize `cortana.jpg` to the grid and light pixels brighter than a
   luminance threshold, the same idea as the `age` branch.
 - Gliders — scatter gliders, or place a single Gosper gun.
-- Asteroids — `1` scatters a glider field and drops in a vector ship. Turn with
+- Asteroids — `s` scatters a glider field and drops in a vector ship. Turn with
   A/D and thrust with space (a static rumble plays while thrusting). Thrust
   accelerates along the heading, momentum carries, a light drag bleeds off speed,
   and the ship wraps at the edges — 1980s Asteroids physics. Thrusting shows an

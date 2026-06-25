@@ -7,7 +7,7 @@ same. Defend them — each left click drops a random "bomb" of life, and the rig
 button drags to erase. A triumphant chime sounds every 10 seconds while a gun
 still fires, a sad note when any gun falls, and a knell when the last one dies.
 
-Press '1' for the asteroids ship: fly it over a glider field with A/D to turn
+Press 's' for the asteroids ship: fly it over a glider field with A/D to turn
 and space to thrust, and the up arrow fires bullets that bomb a splat of new
 life where they hit, stirring the board rather than clearing it. Fly into a live
 cell and the ship crashes.
@@ -16,14 +16,14 @@ The window is resizable and keeps the board's aspect ratio; scaling is
 nearest-neighbor, so cells stay crisp squares. The simulation runs independently
 of the display — the steps/frame slider advances many generations per drawn frame.
 
-Modes (number keys):
-  1       asteroids ship over a glider field
-  2       four-gun battle (new random layout)
-  3       scatter gliders
-  4       single Gosper glider gun
-  5       random soup
-  6       image (cortana.jpg)
-  7       clear
+Modes (letter keys):
+  s       asteroids ship over a glider field
+  b       four-gun battle (new random layout)
+  g       scatter gliders
+  k       single Gosper glider gun
+  r       random soup
+  i       image (cortana.jpg)
+  c       clear
 
 Controls:
   space   run / pause  (in ship mode: thrust)
@@ -35,10 +35,9 @@ Controls:
   esc     quit
 """
 
+import io
 import math
 import os
-import tempfile
-import threading
 import time
 import wave
 
@@ -48,56 +47,70 @@ import taichi as ti
 from sim import GOSPER_GUN, Simulation
 from ship import Ship
 
-# A short white-noise clip for the thrust rumble, looped while thrusting.
-NOISE_WAV = os.path.join(tempfile.gettempdir(), "life_thrust.wav")
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
+# Sound effects as (frequency Hz, duration ms) tone sequences, played through a
+# real mixer (pygame) so they trigger instantly and overlap cleanly.
+TONES = {
+    "pew": [(1200, 30), (700, 35)],                              # bullet fired
+    "boom": [(330, 30), (160, 70)],                              # a bullet bombed a cluster
+    "crash": [(196, 70), (147, 90), (98, 180)],                  # the ship hit a live cell
+    "triumph": [(523, 90), (659, 90), (784, 90), (1047, 200)],   # a gun still fires (every 10s)
+    "gun_down": [(440, 130), (330, 280)],                        # one gun died
+    "knell": [(392, 220), (330, 240), (262, 280), (196, 700)],   # the last gun died
+}
 
 
-def _write_noise(path, seconds=0.4, rate=22050, volume=0.2):
-    samples = (np.random.uniform(-1, 1, int(seconds * rate)) * volume * 32767).astype("<i2")
-    with wave.open(path, "wb") as wf:
+def _wav_sound(sig, rate=22050):
+    data = (np.clip(sig, -1, 1) * 32767).astype("<i2")
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(rate)
-        wf.writeframes(samples.tobytes())
+        wf.writeframes(data.tobytes())
+    buf.seek(0)
+    return pygame.mixer.Sound(buf)
 
 
-_write_noise(NOISE_WAV)
+def _tone_sound(tones, volume=0.5, rate=22050):
+    parts = [np.sin(2 * np.pi * f * np.arange(int(rate * ms / 1000)) / rate) for f, ms in tones]
+    sig = np.concatenate(parts) if parts else np.zeros(1)
+    fade = min(150, len(sig) // 8)  # short ramp in/out to kill clicks
+    if fade > 1:
+        sig[:fade] *= np.linspace(0, 1, fade)
+        sig[-fade:] *= np.linspace(1, 0, fade)
+    return _wav_sound(sig * volume, rate)
+
 
 try:
-    import winsound
+    import pygame
 
-    def _beep(tones):
-        for freq, ms in tones:
-            winsound.Beep(freq, ms)
-
-    def play(tones):
-        """Play (freq_hz, ms) beeps on a background thread, never blocking."""
-        threading.Thread(target=_beep, args=(tones,), daemon=True).start()
-
-    def thrust_start():
-        winsound.PlaySound(NOISE_WAV, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
-
-    def thrust_stop():
-        winsound.PlaySound(None, winsound.SND_PURGE)
-
-except ImportError:  # non-Windows: run silently
-
-    def play(tones):
-        pass
-
-    def thrust_start():
-        pass
-
-    def thrust_stop():
-        pass
+    pygame.mixer.init(frequency=22050, size=-16, channels=1)
+    pygame.mixer.set_num_channels(16)
+    pygame.mixer.set_reserved(1)  # channel 0 is reserved for the thrust loop
+    SOUNDS = {name: _tone_sound(tones) for name, tones in TONES.items()}
+    NOISE = _wav_sound(np.random.uniform(-1, 1, 22050) * 0.18)
+    THRUST_CH = pygame.mixer.Channel(0)
+    _audio = True
+except Exception:  # no pygame or no audio device: run silently
+    _audio = False
 
 
-TRIUMPH = [(523, 90), (659, 90), (784, 90), (1047, 200)]  # a gun still fires (every 10s)
-GUN_DOWN = [(440, 130), (330, 280)]  # one gun died (others remain)
-DEATH_KNELL = [(392, 220), (330, 240), (262, 280), (196, 700)]  # the last gun died
-CRASH = [(196, 70), (147, 90), (98, 180)]  # the ship hit a live cell
-PEW = [(1200, 30), (700, 35)]  # bullet fired
-BOOM = [(330, 30), (160, 70)]  # a bullet blew up a cluster
+def play(name):
+    if _audio:
+        SOUNDS[name].play()
+
+
+def thrust_start():
+    if _audio and not THRUST_CH.get_busy():
+        THRUST_CH.play(NOISE, loops=-1)
+
+
+def thrust_stop():
+    if _audio:
+        THRUST_CH.stop()
+
 
 ti.init(arch=ti.gpu)
 
@@ -319,8 +332,8 @@ while window.running:
                 vx = math.cos(ship.angle) * BULLET_SPEED + ship.vx
                 vy = math.sin(ship.angle) * BULLET_SPEED + ship.vy
                 bullets.append([nx, ny, vx, vy, 0.0])
-                play(PEW)
-        elif e.key == "1":
+                play("pew")
+        elif e.key == "s":
             # Asteroids ship over a glider field; turn with A/D, thrust with space.
             sim.scatter_gliders(40)
             ship.reset()
@@ -328,22 +341,22 @@ while window.running:
             ship_alive, ship_dead_until = True, 0.0
             ship_safe_until = time.perf_counter() + SPAWN_SAFE
             battle, ship_mode, running = False, True, True
-        elif e.key == "2":
+        elif e.key == "b":
             start_battle()
             battle, ship_mode, running, bullets = True, False, True, []
-        elif e.key == "3":
+        elif e.key == "g":
             sim.scatter_gliders(40)
             battle, ship_mode, running, bullets = False, False, True, []
-        elif e.key == "4":
+        elif e.key == "k":
             sim.seed_gun()
             battle, ship_mode, running, bullets = False, False, True, []
-        elif e.key == "5":
+        elif e.key == "r":
             sim.seed_random(CHANCE)
             battle, ship_mode, running, bullets = False, False, False, []
-        elif e.key == "6":
+        elif e.key == "i":
             sim.seed_image("cortana.jpg")
             battle, ship_mode, running, bullets = False, False, False, []
-        elif e.key == "7":
+        elif e.key == "c":
             sim.clear()
             battle, ship_mode, running, bullets = False, False, False, []
         elif e.key == "z":
@@ -391,7 +404,7 @@ while window.running:
     if ship_mode and ship_alive:
         ship.update(dt, thrust_on, window.is_pressed("a"), window.is_pressed("d"))
         if now > ship_safe_until and cells_in_disk(sim.a, int(ship.x), int(ship.y), COLLIDE_R) > 0:
-            play(CRASH)
+            play("crash")
             ship_hits += 1
             ship_alive = False
             ship_dead_until = now + DEATH_TIME
@@ -447,7 +460,7 @@ while window.running:
         bullets = survivors
         if modified:
             sim.a.from_numpy(np.ascontiguousarray(arr, dtype=np.int32))
-            play(BOOM)  # a bullet blew up a cluster this frame
+            play("boom")  # a bullet bombed a cluster this frame
 
     # Gun liveness and audio. Wait for the boxes to reach their steady cycle, and
     # a gun stays dead once detected.
@@ -460,9 +473,9 @@ while window.running:
                 alive[k] = False
         after = sum(alive)
         if before > after:
-            play(DEATH_KNELL if after == 0 else GUN_DOWN)  # knell only for the last
+            play("knell" if after == 0 else "gun_down")  # knell only for the last
         elif after > 0 and now - last_beep >= 10:
-            play(TRIUMPH)
+            play("triumph")
             last_beep = now
 
     ensure_display(w, h)
@@ -519,8 +532,8 @@ while window.running:
         steps_per_frame = gui.slider_int("steps/frame", steps_per_frame, 1, 500)
         brush = gui.slider_int("bomb size", brush, 1, 40)
         gui.text("[LMB] bomb  [RMB] erase")
-        gui.text("1 asteroids  2 battle  3 gliders  4 gun")
-        gui.text("5 random  6 image  7 clear")
+        gui.text("[s]hip  [b]attle  [g]liders  [k]gun")
+        gui.text("[r]andom  [i]mage  [c]lear")
     window.show()
 
 thrust_stop()  # silence the rumble on exit
