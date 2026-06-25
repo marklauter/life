@@ -7,21 +7,22 @@ same. Defend them — each left click drops a random "bomb" of life, and the rig
 button drags to erase. A triumphant chime sounds every 10 seconds while a gun
 still fires, a sad note when any gun falls, and a knell when the last one dies.
 
-Press 'a' for the asteroids ship: fly it with W/A/D over a glider field, and the
-space bar fires pixel bullets that destroy the life cells they hit. Fly into a
-live cell and the ship crashes.
+Press 'a' for the asteroids ship: fly it over a glider field with the arrow keys
+to turn and space to thrust, and the up arrow fires pixel bullets that destroy
+the life cells they hit. Fly into a live cell and the ship crashes.
 
 The window is resizable and keeps the board's aspect ratio; scaling is
 nearest-neighbor, so cells stay crisp squares. The simulation runs independently
 of the display — the steps/frame slider advances many generations per drawn frame.
 
 Controls:
-  space   run / pause  (in ship mode: fire bullets)
+  space   run / pause  (in ship mode: thrust)
   LMB     drop a random bomb of life (one per click)
   RMB     erase (hold and drag)
   j       restart the four-gun battle (new random layout)
   a       launch the asteroids ship over a glider field
-  w/a/d   fly the ship: thrust / turn left / turn right
+  arrows  fly the ship: left / right turn
+  up      fire bullets (ship mode)
   c       clear
   r       reseed random
   i       reseed from cortana.jpg
@@ -32,14 +33,32 @@ Controls:
 """
 
 import math
+import os
+import tempfile
 import threading
 import time
+import wave
 
 import numpy as np
 import taichi as ti
 
 from sim import GOSPER_GUN, Simulation
 from ship import Ship
+
+# A short white-noise clip for the thrust rumble, looped while thrusting.
+NOISE_WAV = os.path.join(tempfile.gettempdir(), "life_thrust.wav")
+
+
+def _write_noise(path, seconds=0.4, rate=22050, volume=0.2):
+    samples = (np.random.uniform(-1, 1, int(seconds * rate)) * volume * 32767).astype("<i2")
+    with wave.open(path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(rate)
+        wf.writeframes(samples.tobytes())
+
+
+_write_noise(NOISE_WAV)
 
 try:
     import winsound
@@ -52,9 +71,21 @@ try:
         """Play (freq_hz, ms) beeps on a background thread, never blocking."""
         threading.Thread(target=_beep, args=(tones,), daemon=True).start()
 
+    def thrust_start():
+        winsound.PlaySound(NOISE_WAV, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+
+    def thrust_stop():
+        winsound.PlaySound(None, winsound.SND_PURGE)
+
 except ImportError:  # non-Windows: run silently
 
     def play(tones):
+        pass
+
+    def thrust_start():
+        pass
+
+    def thrust_stop():
         pass
 
 
@@ -250,6 +281,7 @@ bullets = []
 debris = []
 brush = 6
 prev_lmb = False
+thrust_sound = False
 steps_per_frame = 1
 last_check = 0.0
 prev_time = time.perf_counter()
@@ -276,15 +308,15 @@ while window.running:
         if e.key == ti.ui.ESCAPE:
             window.running = False
         elif e.key == ti.ui.SPACE:
-            if ship_mode:  # fire a pixel bullet from the nose
-                if len(bullets) < MAX_BULLETS:
-                    nx, ny = ship.outline()[0]
-                    vx = math.cos(ship.angle) * BULLET_SPEED + ship.vx
-                    vy = math.sin(ship.angle) * BULLET_SPEED + ship.vy
-                    bullets.append([nx, ny, vx, vy, 0.0])
-                    play(PEW)
-            else:
+            if not ship_mode:  # in ship mode, space is thrust (held, handled below)
                 running = not running
+        elif e.key == ti.ui.UP and ship_mode:  # fire a pixel bullet from the nose
+            if len(bullets) < MAX_BULLETS:
+                nx, ny = ship.outline()[0]
+                vx = math.cos(ship.angle) * BULLET_SPEED + ship.vx
+                vy = math.sin(ship.angle) * BULLET_SPEED + ship.vy
+                bullets.append([nx, ny, vx, vy, 0.0])
+                play(PEW)
         elif e.key == "j":
             start_battle()
             battle, ship_mode, running, bullets = True, False, True, []
@@ -304,8 +336,7 @@ while window.running:
             sim.seed_gun()
             battle, ship_mode, running, bullets = False, False, True, []
         elif e.key == "a" and not ship_mode:
-            # First 'a' launches the asteroids ship over a glider field; held 'a'
-            # afterward steers it (handled below), so it won't relaunch.
+            # Launch the asteroids ship over a glider field (steered by arrows).
             sim.scatter_gliders(40)
             ship.reset()
             ship_hits, bullets, debris = 0, [], []
@@ -347,9 +378,16 @@ while window.running:
     # Fly the ship at frame rate, independent of the sim's steps/frame.
     dt = min(now - prev_time, 0.05)
     prev_time = now
-    thrust_on = ship_mode and ship_alive and window.is_pressed("w")
+    thrust_on = ship_mode and ship_alive and window.is_pressed(ti.ui.SPACE)
+    if thrust_on and not thrust_sound:
+        thrust_start()
+        thrust_sound = True
+    elif not thrust_on and thrust_sound:
+        thrust_stop()
+        thrust_sound = False
     if ship_mode and ship_alive:
-        ship.update(dt, thrust_on, window.is_pressed("a"), window.is_pressed("d"))
+        ship.update(dt, thrust_on, window.is_pressed(ti.ui.LEFT),
+                    window.is_pressed(ti.ui.RIGHT))
         if now > ship_safe_until and cells_in_disk(sim.a, int(ship.x), int(ship.y), COLLIDE_R) > 0:
             play(CRASH)
             ship_hits += 1
@@ -472,10 +510,12 @@ while window.running:
             gui.text(f"guns alive: {sum(alive)}/4")
         if ship_mode:
             gui.text(f"crashes {ship_hits}")
-            gui.text("[W] thrust [A/D] turn [space] fire")
+            gui.text("[space] thrust [left/right] turn [up] fire")
         steps_per_frame = gui.slider_int("steps/frame", steps_per_frame, 1, 500)
         brush = gui.slider_int("bomb size", brush, 1, 40)
         gui.text("[LMB] bomb  [RMB] erase")
         gui.text("[j] battle  [a]steroids  [c]lear")
         gui.text("[r]andom [i]mage [g]liders [k]gun")
     window.show()
+
+thrust_stop()  # silence the rumble on exit
