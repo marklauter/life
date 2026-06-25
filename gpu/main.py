@@ -63,6 +63,7 @@ GUN_DOWN = [(440, 130), (330, 280)]  # one gun died (others remain)
 DEATH_KNELL = [(392, 220), (330, 240), (262, 280), (196, 700)]  # the last gun died
 CRASH = [(196, 70), (147, 90), (98, 180)]  # the ship hit a live cell
 PEW = [(1200, 30), (700, 35)]  # bullet fired
+BOOM = [(330, 30), (160, 70)]  # a bullet blew up a cluster
 
 ti.init(arch=ti.gpu)
 
@@ -403,6 +404,7 @@ while window.running:
         bullets = survivors
         if modified:
             sim.a.from_numpy(np.ascontiguousarray(arr, dtype=np.int32))
+            play(BOOM)  # a bullet blew up a cluster this frame
 
     # Gun liveness and audio. Wait for the boxes to reach their steady cycle, and
     # a gun stays dead once detected.
